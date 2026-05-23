@@ -1,3 +1,6 @@
+"use client";
+
+import { motion } from "framer-motion";
 import {
   AlertTriangle,
   ArrowRight,
@@ -20,6 +23,8 @@ import type {
   ForensicReport as ForensicReportType,
 } from "@/lib/types";
 import { cn, formatTime } from "@/lib/utils";
+import { EASE } from "@/lib/motion";
+import { FadeItem, StaggerList } from "./motion-primitives";
 import { SeverityBadge } from "./SeverityBadge";
 
 const KIND_ICON: Record<string, typeof Server> = {
@@ -127,9 +132,12 @@ function PathNode({
   const intensity = Math.min(1, 0.35 + index * 0.12);
   return (
     <>
-      <span
+      <motion.span
+        initial={{ opacity: 0, scale: 0.95, y: 4 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.32, ease: EASE, delay: index * 0.08 }}
         className={cn(
-          "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-mono text-ink-100 border transition",
+          "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-mono text-ink-100 border",
           "bg-ink-900/80 border-white/[0.08]",
         )}
         style={{
@@ -143,9 +151,16 @@ function PathNode({
           <span className="size-1.5 rounded-full bg-brand-400" />
         )}
         {node}
-      </span>
+      </motion.span>
       {!last ? (
-        <ArrowRight className="size-3.5 text-ink-500 mx-0.5 shrink-0" />
+        <motion.div
+          initial={{ opacity: 0, scaleX: 0 }}
+          animate={{ opacity: 1, scaleX: 1 }}
+          transition={{ duration: 0.22, ease: EASE, delay: index * 0.08 + 0.16 }}
+          className="origin-left"
+        >
+          <ArrowRight className="size-3.5 text-ink-500 mx-0.5 shrink-0" />
+        </motion.div>
       ) : null}
     </>
   );
@@ -176,11 +191,13 @@ function BlastRadius({ entities }: { entities: BlastRadiusEntity[] }) {
           ({entities.length} entities touched)
         </span>
       </div>
-      <div className="space-y-3">
+      <StaggerList variant="stagger" className="space-y-3">
         {sortedKinds.map((kind) => (
-          <BlastGroup key={kind} kind={kind} entities={groups[kind]} />
+          <FadeItem key={kind}>
+            <BlastGroup kind={kind} entities={groups[kind]} />
+          </FadeItem>
         ))}
-      </div>
+      </StaggerList>
     </div>
   );
 }

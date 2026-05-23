@@ -1,3 +1,5 @@
+"use client";
+
 import {
   AlertCircle,
   Beaker,
@@ -21,6 +23,7 @@ import type {
   ServiceProbe,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { FadeItem, StaggerList } from "./motion-primitives";
 import { SeverityBadge } from "./SeverityBadge";
 
 const CATEGORY_META: Record<
@@ -116,25 +119,33 @@ export function DeepTracePanel({ report }: { report: DeepTraceReport }) {
         </div>
       </header>
 
-      <div className="p-5 space-y-5">
+      <StaggerList variant="stagger" className="p-5 space-y-5">
         {report.revised_confidence > 0 || report.revised_root_cause ? (
-          <RevisedVerdict report={report} />
+          <FadeItem>
+            <RevisedVerdict report={report} />
+          </FadeItem>
         ) : null}
 
-        {report.hidden_signals.length > 0 ? (
-          <HiddenBugs signals={report.hidden_signals} />
-        ) : (
-          <EmptyScanState />
-        )}
+        <FadeItem>
+          {report.hidden_signals.length > 0 ? (
+            <HiddenBugs signals={report.hidden_signals} />
+          ) : (
+            <EmptyScanState />
+          )}
+        </FadeItem>
 
         {report.service_probes.length > 0 ? (
-          <ServiceProbes probes={report.service_probes} />
+          <FadeItem>
+            <ServiceProbes probes={report.service_probes} />
+          </FadeItem>
         ) : null}
 
         {report.expert_insights.length > 0 ? (
-          <ExpertInsights insights={report.expert_insights} />
+          <FadeItem>
+            <ExpertInsights insights={report.expert_insights} />
+          </FadeItem>
         ) : null}
-      </div>
+      </StaggerList>
     </section>
   );
 }
@@ -239,11 +250,13 @@ function ServiceProbes({ probes }: { probes: ServiceProbe[] }) {
         label="Per-service deep probe"
         count={probes.length}
       />
-      <div className="grid sm:grid-cols-2 gap-2.5">
+      <StaggerList variant="stagger" className="grid sm:grid-cols-2 gap-2.5">
         {probes.map((probe) => (
-          <ServiceProbeCard key={probe.service} probe={probe} />
+          <FadeItem key={probe.service}>
+            <ServiceProbeCard probe={probe} />
+          </FadeItem>
         ))}
-      </div>
+      </StaggerList>
     </div>
   );
 }

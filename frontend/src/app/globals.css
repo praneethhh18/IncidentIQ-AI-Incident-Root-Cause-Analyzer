@@ -18,7 +18,28 @@ body {
     radial-gradient(900px 500px at 110% -20%, rgba(34, 211, 238, 0.10), transparent 65%),
     linear-gradient(180deg, #020617 0%, #0B1224 100%);
   background-attachment: fixed;
-  font-feature-settings: "ss01", "cv11";
+  font-feature-settings: "ss01", "cv11", "cv02";
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Make all stat-like numbers render with proportional spacing */
+.tabular-nums,
+code,
+pre,
+.font-mono {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Honor reduced-motion preference globally */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Subtle grid backdrop for hero/landing sections */
@@ -54,15 +75,15 @@ body {
 }
 
 .btn-primary {
-  @apply btn bg-brand-500 text-white shadow-glow hover:bg-brand-400;
+  @apply btn bg-brand-500 text-white shadow-glow hover:bg-brand-400 focus-visible:ring-2 focus-visible:ring-brand-400/60 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950;
 }
 
 .btn-secondary {
-  @apply btn bg-white/[0.05] text-ink-100 border border-white/[0.08] hover:bg-white/[0.08];
+  @apply btn bg-white/[0.05] text-ink-100 border border-white/[0.08] hover:bg-white/[0.08] hover:border-white/[0.12] focus-visible:ring-2 focus-visible:ring-white/30;
 }
 
 .btn-ghost {
-  @apply btn text-ink-300 hover:text-ink-100 hover:bg-white/[0.05];
+  @apply btn text-ink-300 hover:text-ink-100 hover:bg-white/[0.05] focus-visible:ring-2 focus-visible:ring-white/20;
 }
 
 .chip {

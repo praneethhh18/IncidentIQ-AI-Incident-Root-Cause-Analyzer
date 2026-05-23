@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { motion } from "framer-motion";
 import {
   Brain,
   ChevronDown,
@@ -12,6 +13,7 @@ import {
 
 import type { AgentStep } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { transitions } from "@/lib/motion";
 
 const KIND_META: Record<
   string,
@@ -70,7 +72,12 @@ function StepRow({ step }: { step: AgentStep }) {
     step.output !== undefined && step.output !== null && step.kind === "observation";
 
   return (
-    <li className="relative grid grid-cols-[2rem,1fr] gap-3">
+    <motion.li
+      initial={{ opacity: 0, y: 6, x: -4 }}
+      animate={{ opacity: 1, y: 0, x: 0 }}
+      transition={transitions.base}
+      className="relative grid grid-cols-[2rem,1fr] gap-3"
+    >
       <span
         className={cn(
           "relative z-10 size-7 grid place-items-center rounded-full bg-ink-950 ring-4 ring-ink-950",
@@ -116,11 +123,16 @@ function StepRow({ step }: { step: AgentStep }) {
           </button>
         ) : null}
         {open && hasOutput ? (
-          <pre className="mt-2 max-h-72 overflow-auto rounded-lg bg-ink-950/80 border border-white/[0.06] p-3 text-[11.5px] font-mono text-ink-300 leading-relaxed">
+          <motion.pre
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            transition={transitions.base}
+            className="mt-2 max-h-72 overflow-auto rounded-lg bg-ink-950/80 border border-white/[0.06] p-3 text-[11.5px] font-mono text-ink-300 leading-relaxed"
+          >
             {JSON.stringify(step.output, null, 2)}
-          </pre>
+          </motion.pre>
         ) : null}
       </div>
-    </li>
+    </motion.li>
   );
 }

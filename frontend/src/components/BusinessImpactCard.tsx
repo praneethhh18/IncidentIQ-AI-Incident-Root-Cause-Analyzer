@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 
 import type { BusinessImpact } from "@/lib/types";
+import { CountUp } from "./motion-primitives";
 
 export function BusinessImpactCard({ impact }: { impact: BusinessImpact }) {
   return (
@@ -36,19 +37,40 @@ export function BusinessImpactCard({ impact }: { impact: BusinessImpact }) {
         <Metric
           icon={<Users className="size-4 text-cyan-300" />}
           label="Users affected"
-          value={impact.affected_users_label}
-          sub={`~${impact.affected_users_estimate.toLocaleString()} estimated`}
+          valueNode={
+            <CountUp
+              to={impact.affected_users_estimate}
+              format={(n) =>
+                n >= 1_000_000
+                  ? `~${(n / 1_000_000).toFixed(1)}M`
+                  : n >= 1_000
+                  ? `~${(n / 1_000).toFixed(1)}k`
+                  : `~${n}`
+              }
+            />
+          }
+          sub={`${impact.affected_users_estimate.toLocaleString()} estimated`}
         />
         <Metric
           icon={<BadgeDollarSign className="size-4 text-emerald-300" />}
           label="Revenue at risk"
-          value={`$${impact.revenue_at_risk_usd.toLocaleString()}`}
+          valueNode={
+            <CountUp
+              to={impact.revenue_at_risk_usd}
+              format={(n) => `$${n.toLocaleString()}`}
+            />
+          }
           sub={impact.revenue_basis}
         />
         <Metric
           icon={<Clock4 className="size-4 text-brand-300" />}
           label="Est. MTTR"
-          value={`${impact.estimated_mttr_minutes}m`}
+          valueNode={
+            <CountUp
+              to={impact.estimated_mttr_minutes}
+              format={(n) => `${n}m`}
+            />
+          }
           sub="With top remediation applied"
         />
       </div>
@@ -107,12 +129,12 @@ export function BusinessImpactCard({ impact }: { impact: BusinessImpact }) {
 function Metric({
   icon,
   label,
-  value,
+  valueNode,
   sub,
 }: {
   icon: React.ReactNode;
   label: string;
-  value: string;
+  valueNode: React.ReactNode;
   sub: string;
 }) {
   return (
@@ -121,8 +143,8 @@ function Metric({
         {icon}
         {label}
       </div>
-      <div className="mt-1.5 text-2xl font-semibold tracking-tight text-ink-50">
-        {value}
+      <div className="mt-1.5 text-2xl font-semibold tracking-tight text-ink-50 tabular-nums">
+        {valueNode}
       </div>
       <div className="mt-1 text-[11.5px] text-ink-500 leading-snug">{sub}</div>
     </div>

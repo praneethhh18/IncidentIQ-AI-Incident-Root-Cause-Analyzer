@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { motion } from "framer-motion";
 import {
   ArrowRight,
   Brain,
@@ -11,6 +14,15 @@ import {
   Sparkles,
   Workflow,
 } from "lucide-react";
+
+import { EASE, transitions } from "@/lib/motion";
+import {
+  FadeIn,
+  FadeItem,
+  HoverCard,
+  PulseDot,
+  StaggerList,
+} from "@/components/motion-primitives";
 
 export default function Landing() {
   return (
@@ -28,36 +40,64 @@ function Hero() {
   return (
     <section className="relative overflow-hidden">
       <div className="absolute inset-0 bg-dots opacity-40 [mask-image:radial-gradient(ellipse_at_top,black,transparent_70%)]" />
-      <div className="absolute -top-32 left-1/2 -translate-x-1/2 h-[28rem] w-[60rem] rounded-full bg-brand-500/20 blur-3xl" />
+      <motion.div
+        className="absolute -top-32 left-1/2 -translate-x-1/2 h-[28rem] w-[60rem] rounded-full bg-brand-500/20 blur-3xl"
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 1.2, ease: EASE }}
+      />
 
       <div className="relative mx-auto max-w-7xl px-6 pt-20 pb-24 text-center">
-        <div className="inline-flex items-center gap-2 chip mb-6">
-          <span className="size-1.5 rounded-full bg-brand-400 animate-pulse-slow" />
-          Powered by AWS Bedrock · Amazon Nova Pro
-        </div>
+        <FadeIn>
+          <div className="inline-flex items-center gap-2 chip mb-6 text-brand-300">
+            <PulseDot className="text-brand-400" />
+            Powered by AWS Bedrock · Amazon Nova Pro
+          </div>
+        </FadeIn>
 
-        <h1 className="text-5xl md:text-6xl font-semibold tracking-tight text-ink-50 leading-[1.05]">
-          Find the <span className="bg-gradient-to-r from-brand-300 via-brand-200 to-white bg-clip-text text-transparent">root cause</span><br />
+        <motion.h1
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: EASE, delay: 0.08 }}
+          className="text-5xl md:text-6xl font-semibold tracking-tight text-ink-50 leading-[1.05]"
+        >
+          Find the{" "}
+          <span className="bg-gradient-to-r from-brand-300 via-brand-200 to-white bg-clip-text text-transparent">
+            root cause
+          </span>
+          <br />
           before the page bounces.
-        </h1>
+        </motion.h1>
 
-        <p className="mt-6 max-w-2xl mx-auto text-ink-300 text-lg leading-relaxed">
+        <motion.p
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: EASE, delay: 0.18 }}
+          className="mt-6 max-w-2xl mx-auto text-ink-300 text-lg leading-relaxed"
+        >
           IncidentIQ plugs into Datadog, Grafana, and New Relic, reads your logs in real time, and produces the root cause, timeline, affected services, severity, and a ranked fix list — in under 10 seconds.
-        </p>
+        </motion.p>
 
-        <div className="mt-9 flex items-center justify-center gap-3">
-          <Link href="/dashboard" className="btn-primary px-5 py-2.5 text-[15px]">
-            <Sparkles className="size-4" /> Try it now
-            <ArrowRight className="size-4" />
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: EASE, delay: 0.28 }}
+          className="mt-9 flex items-center justify-center gap-3"
+        >
+          <Link href="/dashboard" className="btn-primary px-5 py-2.5 text-[15px] group">
+            <Sparkles className="size-4 transition group-hover:rotate-12" /> Try it now
+            <ArrowRight className="size-4 transition group-hover:translate-x-0.5" />
           </Link>
           <Link href="/incidents" className="btn-secondary px-5 py-2.5 text-[15px]">
             View incidents
           </Link>
-        </div>
+        </motion.div>
 
-        <div className="mt-10 text-[12px] text-ink-500">
-          Works out of the box — no keys required. Demo mode ships with three realistic incidents.
-        </div>
+        <FadeIn delay={0.4}>
+          <div className="mt-10 text-[12px] text-ink-500">
+            Works out of the box — no keys required. Demo mode ships with three realistic incidents.
+          </div>
+        </FadeIn>
       </div>
 
       <HeroPreview />
@@ -67,7 +107,12 @@ function Hero() {
 
 function HeroPreview() {
   return (
-    <div className="relative mx-auto max-w-6xl px-6 pb-20">
+    <motion.div
+      initial={{ opacity: 0, y: 20, scale: 0.99 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.7, ease: EASE, delay: 0.35 }}
+      className="relative mx-auto max-w-6xl px-6 pb-20"
+    >
       <div className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-b from-ink-900 to-ink-950 shadow-glow overflow-hidden">
         <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-white/[0.06] bg-ink-900/80">
           <span className="size-2.5 rounded-full bg-red-400/60" />
@@ -112,19 +157,29 @@ function HeroPreview() {
               { t: "02:59:18", l: "Redis CLUSTERDOWN", s: "p1" },
               { t: "03:00:02", l: "Circuit breaker opens", s: "p1" },
               { t: "03:00:14", l: "payments-worker OOM", s: "p1" },
-            ].map((event) => (
-              <div key={event.t} className="flex items-start gap-3 text-sm">
+            ].map((event, i) => (
+              <motion.div
+                key={event.t}
+                initial={{ opacity: 0, x: -6 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{
+                  duration: 0.4,
+                  ease: EASE,
+                  delay: 0.65 + i * 0.1,
+                }}
+                className="flex items-start gap-3 text-sm"
+              >
                 <span className="font-mono text-[11px] text-ink-500 mt-1 tabular-nums">
                   {event.t}
                 </span>
                 <span className={`sev-dot mt-1.5 sev-dot-${event.s}`} />
                 <span className="text-ink-200">{event.l}</span>
-              </div>
+              </motion.div>
             ))}
           </div>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -210,20 +265,22 @@ function Features() {
         </p>
       </div>
 
-      <div className="mt-12 grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <StaggerList
+        variant="staggerCards"
+        className="mt-12 grid md:grid-cols-2 lg:grid-cols-3 gap-4"
+      >
         {FEATURES.map(({ icon: Icon, title, body }) => (
-          <div
-            key={title}
-            className="card-pad hover:border-white/10 hover:bg-ink-900/80 transition"
-          >
-            <div className="size-9 grid place-items-center rounded-lg bg-brand-500/10 text-brand-300 border border-brand-500/20">
-              <Icon className="size-4" />
-            </div>
-            <h3 className="mt-4 font-semibold text-ink-50">{title}</h3>
-            <p className="mt-1.5 text-sm text-ink-400 leading-relaxed">{body}</p>
-          </div>
+          <FadeItem key={title} variant="cardRise">
+            <HoverCard className="card-pad h-full hover:border-white/10 hover:bg-ink-900/80 transition-colors">
+              <div className="size-9 grid place-items-center rounded-lg bg-brand-500/10 text-brand-300 border border-brand-500/20">
+                <Icon className="size-4" />
+              </div>
+              <h3 className="mt-4 font-semibold text-ink-50">{title}</h3>
+              <p className="mt-1.5 text-sm text-ink-400 leading-relaxed">{body}</p>
+            </HoverCard>
+          </FadeItem>
         ))}
-      </div>
+      </StaggerList>
     </section>
   );
 }

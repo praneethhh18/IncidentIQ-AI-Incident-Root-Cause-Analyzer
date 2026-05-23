@@ -26,6 +26,7 @@ import { FiveWhysCard } from "./FiveWhysCard";
 import { FixRecommendations } from "./FixRecommendations";
 import { ForensicReport } from "./ForensicReport";
 import { IncidentTimeline } from "./IncidentTimeline";
+import { BannerReveal, FadeItem, StaggerList } from "./motion-primitives";
 import { RootCauseCard } from "./RootCauseCard";
 import { ServiceGraph } from "./ServiceGraph";
 import { SeverityBadge } from "./SeverityBadge";
@@ -57,7 +58,8 @@ export function AnalysisResult({
   };
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <StaggerList variant="staggerCards" className="space-y-5">
+      <FadeItem variant="cardRise">
       <header className="card-pad">
         <div className="flex items-center gap-2 flex-wrap">
           <SeverityBadge severity={analysis.severity} />
@@ -123,85 +125,108 @@ export function AnalysisResult({
         </h2>
         <p className="mt-3 text-ink-300 leading-relaxed">{analysis.summary}</p>
       </header>
+      </FadeItem>
 
       {analysis.should_escalate && !analysis.deep_trace ? (
-        <DeepTraceBanner
-          reason={analysis.escalation_reason}
-          running={deepRunning}
-          onRun={() => runDeepTrace(analysis.escalation_reason)}
-        />
+        <BannerReveal>
+          <DeepTraceBanner
+            reason={analysis.escalation_reason}
+            running={deepRunning}
+            onRun={() => runDeepTrace(analysis.escalation_reason)}
+          />
+        </BannerReveal>
       ) : null}
 
       {deepError ? (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 text-red-200 px-3 py-2 text-[13px]">
-          Deep Trace failed: {deepError}
-        </div>
+        <FadeItem>
+          <div className="rounded-lg border border-red-500/30 bg-red-500/10 text-red-200 px-3 py-2 text-[13px]">
+            Deep Trace failed: {deepError}
+          </div>
+        </FadeItem>
       ) : null}
 
       {analysis.deep_trace ? (
-        <DeepTracePanel report={analysis.deep_trace} />
+        <BannerReveal>
+          <DeepTracePanel report={analysis.deep_trace} />
+        </BannerReveal>
       ) : null}
 
       {analysis.business_impact ? (
-        <BusinessImpactCard impact={analysis.business_impact} />
+        <FadeItem variant="cardRise">
+          <BusinessImpactCard impact={analysis.business_impact} />
+        </FadeItem>
       ) : null}
 
-      <div className="grid lg:grid-cols-2 gap-5">
-        <RootCauseCard analysis={analysis} />
-        <div className="card-pad">
-          <h3 className="text-sm font-semibold tracking-wide text-ink-50 uppercase mb-3">
-            Affected services
-          </h3>
-          <ServiceGraph services={analysis.affected_services} />
+      <FadeItem>
+        <div className="grid lg:grid-cols-2 gap-5">
+          <RootCauseCard analysis={analysis} />
+          <div className="card-pad">
+            <h3 className="text-sm font-semibold tracking-wide text-ink-50 uppercase mb-3">
+              Affected services
+            </h3>
+            <ServiceGraph services={analysis.affected_services} />
+          </div>
         </div>
-      </div>
+      </FadeItem>
 
       {analysis.forensic ? (
-        <ForensicReport forensic={analysis.forensic} />
+        <FadeItem variant="cardRise">
+          <ForensicReport forensic={analysis.forensic} />
+        </FadeItem>
       ) : null}
 
-      {analysis.five_whys ? <FiveWhysCard whys={analysis.five_whys} /> : null}
+      {analysis.five_whys ? (
+        <FadeItem>
+          <FiveWhysCard whys={analysis.five_whys} />
+        </FadeItem>
+      ) : null}
 
-      <div className="grid lg:grid-cols-[1.1fr,1fr] gap-5">
-        <div className="card-pad">
-          <h3 className="text-sm font-semibold tracking-wide text-ink-50 uppercase mb-4">
-            Incident timeline
-          </h3>
-          <IncidentTimeline events={analysis.timeline} />
+      <FadeItem>
+        <div className="grid lg:grid-cols-[1.1fr,1fr] gap-5">
+          <div className="card-pad">
+            <h3 className="text-sm font-semibold tracking-wide text-ink-50 uppercase mb-4">
+              Incident timeline
+            </h3>
+            <IncidentTimeline events={analysis.timeline} />
+          </div>
+          <div className="card-pad">
+            <h3 className="text-sm font-semibold tracking-wide text-ink-50 uppercase mb-3">
+              Fix recommendations
+            </h3>
+            <FixRecommendations fixes={analysis.fixes} />
+          </div>
         </div>
+      </FadeItem>
+
+      <FadeItem>
         <div className="card-pad">
           <h3 className="text-sm font-semibold tracking-wide text-ink-50 uppercase mb-3">
-            Fix recommendations
+            Supporting evidence
           </h3>
-          <FixRecommendations fixes={analysis.fixes} />
+          <EvidenceList lines={analysis.evidence} />
         </div>
-      </div>
-
-      <div className="card-pad">
-        <h3 className="text-sm font-semibold tracking-wide text-ink-50 uppercase mb-3">
-          Supporting evidence
-        </h3>
-        <EvidenceList lines={analysis.evidence} />
-      </div>
+      </FadeItem>
 
       {showAgentTrail && analysis.agent_steps && analysis.agent_steps.length > 0 ? (
-        <div className="card-pad">
-          <div className="flex items-center gap-2 mb-1">
-            <Bot className="size-4 text-brand-300" />
-            <h3 className="text-sm font-semibold tracking-wide text-ink-50 uppercase">
-              Agent reasoning trail
-            </h3>
-            <span className="chip ml-auto">
-              {analysis.agent_steps.length} steps
-            </span>
+        <FadeItem>
+          <div className="card-pad">
+            <div className="flex items-center gap-2 mb-1">
+              <Bot className="size-4 text-brand-300" />
+              <h3 className="text-sm font-semibold tracking-wide text-ink-50 uppercase">
+                Agent reasoning trail
+              </h3>
+              <span className="chip ml-auto">
+                {analysis.agent_steps.length} steps
+              </span>
+            </div>
+            <p className="text-[12.5px] text-ink-400 mb-4">
+              How the agent thought, which tools it called, what it observed, and
+              how it decided.
+            </p>
+            <AgentTrail steps={analysis.agent_steps} />
           </div>
-          <p className="text-[12.5px] text-ink-400 mb-4">
-            How the agent thought, which tools it called, what it observed, and
-            how it decided.
-          </p>
-          <AgentTrail steps={analysis.agent_steps} />
-        </div>
+        </FadeItem>
       ) : null}
-    </div>
+    </StaggerList>
   );
 }

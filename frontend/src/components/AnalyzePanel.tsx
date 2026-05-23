@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { AgentTrail } from "./AgentTrail";
 import { AnalysisResult } from "./AnalysisResult";
 import { IntegrationCard } from "./IntegrationCard";
+import { PulseDot } from "./motion-primitives";
 
 type Tab = "paste" | "upload" | "datadog" | "grafana" | "newrelic";
 
@@ -356,15 +357,7 @@ function LiveAgentPanel({
   return (
     <div className="card-pad animate-fade-in">
       <div className="flex items-center gap-3 mb-4">
-        <div className="relative">
-          <span className="size-2.5 rounded-full bg-brand-400 absolute inset-0 m-auto" />
-          <span
-            className={cn(
-              "block size-3 rounded-full bg-brand-400/50",
-              !done && "animate-ping",
-            )}
-          />
-        </div>
+        <PulseDot className={done ? "text-emerald-400" : "text-brand-400"} />
         <div className="flex-1 min-w-0">
           <div className="text-[11px] uppercase tracking-[0.18em] text-brand-300 font-semibold">
             {done ? "Agent finished" : "Agent is thinking…"}
@@ -373,7 +366,7 @@ function LiveAgentPanel({
             {phase ?? (done ? "Synthesis complete." : "Working…")}
           </div>
         </div>
-        <span className="chip">{steps.length} steps</span>
+        <span className="chip tabular-nums">{steps.length} steps</span>
       </div>
       {steps.length > 0 ? <AgentTrail steps={steps} /> : (
         <div className="text-sm text-ink-500 italic">
