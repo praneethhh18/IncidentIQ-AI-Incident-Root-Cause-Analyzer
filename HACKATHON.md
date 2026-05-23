@@ -11,8 +11,9 @@ single-turn chat wrapper.
 ## TL;DR
 
 - **Problem:** Engineers waste hours scrolling logs and dashboards during outages.
-- **Solution:** An AI agent that ingests logs from Datadog / Grafana / New Relic (or pasted text), runs a multi-step think-act-observe loop with five tools, and produces root cause + timeline + affected services + severity + ranked fixes + PDF post-mortem in seconds.
-- **Why agentic:** The agent calls deterministic tools (`extract_entities`, `correlate_timeline`, `search_logs`, `service_dependency_hints`, `query_similar_incidents`) **before** the LLM ever sees the prompt, then self-checks the LLM output against grounded observations. The full reasoning trail is exposed in the API and UI.
+- **Solution:** An AI agent that ingests logs from Datadog / Grafana / New Relic / PagerDuty / Opsgenie webhooks (or pasted text), runs a multi-step think-act-observe loop with **eight tools**, performs **forensic reverse-engineering** (patient zero, blast radius, trigger hypothesis), and produces root cause + timeline + ranked fixes + PDF post-mortem in seconds.
+- **Why agentic:** The agent calls deterministic tools (`extract_entities`, `correlate_timeline`, `search_logs`, `service_dependency_hints`, `query_similar_incidents`, `trace_origin`, `compute_blast_radius`, `infer_trigger`) **before** the LLM ever sees the prompt, then self-checks the LLM output against grounded observations. The reasoning trail **streams live via SSE** so judges watch the agent think.
+- **Wow moment:** Forensic mode — inspired by malware-forensic tooling, it reverse-engineers the entire cascade back to patient zero and forward to every affected entity.
 
 ---
 

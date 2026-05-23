@@ -18,7 +18,9 @@ from typing import Dict, List
 from app.models import (
     AffectedService,
     AnalyzeResponse,
+    BlastRadiusEntity,
     FixRecommendation,
+    ForensicReport,
     Severity,
     SourceKind,
     TimelineEvent,
@@ -225,6 +227,78 @@ def cascading_failure_demo() -> AnalyzeResponse:
         ],
         source=SourceKind.DEMO,
         model="demo",
+        forensic=ForensicReport(
+            patient_zero=TimelineEvent(
+                timestamp=base,
+                label="Patient zero — first connection wait",
+                detail=(
+                    "checkout-api logged Postgres pool getConnection waited 1.8s "
+                    "on db-primary.internal — the first abnormal signal before any "
+                    "user-visible failure."
+                ),
+                severity=Severity.P3,
+            ),
+            propagation_path=[
+                "db-primary (Postgres)",
+                "checkout-api",
+                "payments-worker",
+                "redis-cluster",
+                "api-gateway",
+                "end users",
+            ],
+            blast_radius=[
+                BlastRadiusEntity(
+                    kind="service",
+                    name="checkout-api",
+                    impact="Pool exhausted, 503s on POST /api/v1/checkout",
+                    severity=Severity.P1,
+                ),
+                BlastRadiusEntity(
+                    kind="service",
+                    name="payments-worker",
+                    impact="OOM-killed, CrashLoopBackOff (3 restarts)",
+                    severity=Severity.P1,
+                ),
+                BlastRadiusEntity(
+                    kind="dependency",
+                    name="db-primary (Postgres writer)",
+                    impact="Connection pool fully saturated, 47 callers waiting",
+                    severity=Severity.P2,
+                ),
+                BlastRadiusEntity(
+                    kind="dependency",
+                    name="redis-cluster",
+                    impact="CLUSTERDOWN during slot migration",
+                    severity=Severity.P1,
+                ),
+                BlastRadiusEntity(
+                    kind="service",
+                    name="api-gateway",
+                    impact="Circuit breaker open, SLO burn 84x",
+                    severity=Severity.P2,
+                ),
+                BlastRadiusEntity(
+                    kind="user_segment",
+                    name="All checkout users",
+                    impact="42% of POST /api/v1/checkout requests failing with 503",
+                    severity=Severity.P1,
+                ),
+                BlastRadiusEntity(
+                    kind="user_segment",
+                    name="Notification recipients",
+                    impact="14k queued notifications backlogged",
+                    severity=Severity.P3,
+                ),
+            ],
+            trigger_hypothesis=(
+                "Long-running writer query on db-primary held connections past the "
+                "pool's idle timeout, starving new requests. The Redis slot migration "
+                "happened concurrently but is symptom, not cause — the database "
+                "pressure is what birthed patient zero."
+            ),
+            trigger_confidence=0.78,
+            minutes_to_detection=1,
+        ),
     )
 
 
@@ -334,6 +408,58 @@ def memory_leak_demo() -> AnalyzeResponse:
         ],
         source=SourceKind.DEMO,
         model="demo",
+        forensic=ForensicReport(
+            patient_zero=TimelineEvent(
+                timestamp=base + timedelta(minutes=88),
+                label="Patient zero — heap pressure begins",
+                detail=(
+                    "Heap usage crossed 60% with GC pauses growing to 240ms. "
+                    "The leak started here; OOMs came an hour later."
+                ),
+                severity=Severity.P3,
+            ),
+            propagation_path=[
+                "recommendations-svc (heap)",
+                "recommendations-svc (latency)",
+                "api-gateway",
+                "end users (fallback recommendations)",
+            ],
+            blast_radius=[
+                BlastRadiusEntity(
+                    kind="service",
+                    name="recommendations-svc",
+                    impact="OOMKilled every ~50 minutes (5 restarts in 4h)",
+                    severity=Severity.P2,
+                ),
+                BlastRadiusEntity(
+                    kind="service",
+                    name="api-gateway",
+                    impact="Serving cached fallback for 18% of recommendation requests",
+                    severity=Severity.P3,
+                ),
+                BlastRadiusEntity(
+                    kind="user_segment",
+                    name="18% of active users",
+                    impact="Receiving stale / generic recommendations instead of personalized",
+                    severity=Severity.P2,
+                ),
+                BlastRadiusEntity(
+                    kind="data",
+                    name="UserSimilarityCache",
+                    impact="Cache rebuilds from scratch after every OOM; cold-start latency penalty",
+                    severity=Severity.P3,
+                ),
+            ],
+            trigger_hypothesis=(
+                "UserSimilarityCache was introduced without a max-size or TTL "
+                "policy. As traffic grew and more unique user IDs entered the "
+                "cache, the heap filled linearly until the JVM ran out of space. "
+                "No precipitating deploy / config event — this is slow-burn "
+                "resource exhaustion, latent in the code from the start."
+            ),
+            trigger_confidence=0.82,
+            minutes_to_detection=141,
+        ),
     )
 
 
@@ -450,6 +576,66 @@ def db_outage_demo() -> AnalyzeResponse:
         ],
         source=SourceKind.DEMO,
         model="demo",
+        forensic=ForensicReport(
+            patient_zero=TimelineEvent(
+                timestamp=base,
+                label="Patient zero — slow queries on old primary",
+                detail=(
+                    "orders-api SlowQuery 4.2s on SELECT orders WHERE user_id — "
+                    "sustained slow queries are what eventually drove RDS to "
+                    "promote the standby. Failover was a symptom, not the cause."
+                ),
+                severity=Severity.P3,
+            ),
+            propagation_path=[
+                "rds-orders-prod (slow queries)",
+                "rds-orders-prod (failover triggered)",
+                "orders-api",
+                "inventory-svc",
+                "order #91823 (stale read)",
+            ],
+            blast_radius=[
+                BlastRadiusEntity(
+                    kind="dependency",
+                    name="rds-orders-prod (Aurora cluster)",
+                    impact="Writer failover complete; replica lag 18.4s vs 5s threshold",
+                    severity=Severity.P2,
+                ),
+                BlastRadiusEntity(
+                    kind="service",
+                    name="orders-api",
+                    impact="503s during failover, now serving stale data on read path",
+                    severity=Severity.P1,
+                ),
+                BlastRadiusEntity(
+                    kind="service",
+                    name="inventory-svc",
+                    impact="Stale reads — observed inconsistency on order #91823",
+                    severity=Severity.P1,
+                ),
+                BlastRadiusEntity(
+                    kind="data",
+                    name="Recent orders (last ~20s)",
+                    impact="Risk of incorrect status; double-charge / oversell window open",
+                    severity=Severity.P1,
+                ),
+                BlastRadiusEntity(
+                    kind="region",
+                    name="us-east-1",
+                    impact="Primary region affected; cross-region traffic unaffected",
+                    severity=Severity.P2,
+                ),
+            ],
+            trigger_hypothesis=(
+                "Sustained slow queries on the old primary (likely a missing or "
+                "stale index on orders.user_id + orders.created_at) drove load "
+                "high enough for RDS to initiate failover. The user-visible "
+                "incident only became a P1 once the lag started producing stale "
+                "reads on captured payments."
+            ),
+            trigger_confidence=0.72,
+            minutes_to_detection=2,
+        ),
     )
 
 

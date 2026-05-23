@@ -7,9 +7,10 @@ even when AWS or monitoring credentials are absent.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
-from typing import Optional
+from typing import Any, AsyncIterator, Dict, Optional
 
 from app.core.config import Settings
 from app.models import AnalyzeRequest, AnalyzeResponse, SourceKind
@@ -38,6 +39,82 @@ class Analyzer:
         self._bedrock = bedrock
         self._integrations = integrations
         self._agent = agent or IncidentAgent()
+
+    async def analyze_stream(
+        self, request: AnalyzeRequest, step_delay: float = 0.18
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """Same flow as ``analyze()``, but yields incremental events.
+
+        Each event is a small JSON-serialisable dict that the SSE endpoint
+        can emit straight to the client. The agent's reasoning trail
+        streams step-by-step so judges (and humans) can watch the agent
+        think in real time.
+        """
+        started = time.perf_counter()
+
+        yield {"event": "phase", "phase": "perceive", "message": "Resolving telemetry source…"}
+
+        try:
+            logs = await self._resolve_logs(request)
+        except Exception as exc:  # noqa: BLE001
+            yield {"event": "error", "message": f"Failed to resolve logs: {exc}"}
+            return
+
+        if not logs:
+            yield {
+                "event": "error",
+                "message": "No logs provided. Paste/upload a payload or configure an integration.",
+            }
+            return
+
+        truncated = _truncate_logs(logs)
+        yield {
+            "event": "phase",
+            "phase": "agent",
+            "message": "Agent investigating…",
+            "log_lines": logs.count("\n") + 1,
+        }
+
+        trail, agent_context = self._agent.plan_and_observe(truncated)
+
+        # Stream each agent step with a small delay for visceral effect.
+        for step in trail:
+            yield {"event": "agent_step", "step": step.model_dump(mode="json")}
+            if step_delay > 0:
+                await asyncio.sleep(step_delay)
+
+        yield {
+            "event": "phase",
+            "phase": "synthesize",
+            "message": "Synthesising root cause with Bedrock Nova Pro…",
+        }
+
+        result = self._run_inference(
+            logs=truncated,
+            agent_context=agent_context,
+            service_hint=request.service_hint,
+            source=request.source,
+            title=request.title,
+        )
+
+        yield {
+            "event": "phase",
+            "phase": "audit",
+            "message": "Self-checking grounding…",
+        }
+
+        result = self._agent.audit_and_annotate(trail, agent_context, result)
+
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
+        result.duration_ms = elapsed_ms
+        result.source = request.source
+        if request.title:
+            result.title = request.title
+
+        yield {
+            "event": "complete",
+            "analysis": result.model_dump(mode="json"),
+        }
 
     async def analyze(self, request: AnalyzeRequest) -> AnalyzeResponse:
         started = time.perf_counter()

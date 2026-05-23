@@ -8,7 +8,8 @@ export type SourceKind =
   | "datadog"
   | "grafana"
   | "newrelic"
-  | "demo";
+  | "demo"
+  | "webhook";
 
 export interface AffectedService {
   name: string;
@@ -41,6 +42,22 @@ export interface AgentStep {
   output?: unknown;
 }
 
+export interface BlastRadiusEntity {
+  kind: "service" | "user_segment" | "region" | "dependency" | "data" | string;
+  name: string;
+  impact: string;
+  severity: Severity | null;
+}
+
+export interface ForensicReport {
+  patient_zero: TimelineEvent;
+  propagation_path: string[];
+  blast_radius: BlastRadiusEntity[];
+  trigger_hypothesis: string;
+  trigger_confidence: number;
+  minutes_to_detection: number | null;
+}
+
 export interface AnalyzeResponse {
   incident_id: string;
   created_at: string;
@@ -58,6 +75,7 @@ export interface AnalyzeResponse {
   model: string;
   duration_ms: number;
   agent_steps: AgentStep[];
+  forensic: ForensicReport | null;
 }
 
 export interface IncidentSummary {

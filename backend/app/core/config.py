@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     new_relic_user_key: str | None = None
     new_relic_account_id: str | None = None
 
+    # Slack webhook for auto-posting analyses (optional)
+    slack_webhook_url: str | None = None
+
     # Server
     port: int = 8000
     cors_origins: List[str] = Field(
@@ -74,6 +77,10 @@ class Settings(BaseSettings):
     @property
     def newrelic_enabled(self) -> bool:
         return bool(self.new_relic_user_key and self.new_relic_account_id)
+
+    @property
+    def slack_enabled(self) -> bool:
+        return bool(self.slack_webhook_url)
 
 
 @lru_cache(maxsize=1)

@@ -12,6 +12,7 @@ import {
 
 import { api } from "@/lib/api";
 import type {
+  AgentStep,
   AnalyzeResponse,
   IntegrationStatus,
   SampleIncident,
@@ -19,6 +20,7 @@ import type {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+import { AgentTrail } from "./AgentTrail";
 import { AnalysisResult } from "./AnalysisResult";
 import { IntegrationCard } from "./IntegrationCard";
 
@@ -48,8 +50,11 @@ export function AnalyzePanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
+  const [liveSteps, setLiveSteps] = useState<AgentStep[]>([]);
+  const [livePhase, setLivePhase] = useState<string | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (result && resultRef.current) {
@@ -78,6 +83,13 @@ export function AnalyzePanel({
   const run = async () => {
     setLoading(true);
     setError(null);
+    setLiveSteps([]);
+    setLivePhase("Connecting to agent…");
+    setResult(null);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
       const source =
         TABS.find((t) => t.id === tab)?.source ?? ("paste" as SourceKind);
@@ -97,12 +109,26 @@ export function AnalyzePanel({
         throw new Error("Paste logs or upload a file first.");
       }
 
-      const data = await api.analyze(body);
-      setResult(data);
+      let final: AnalyzeResponse | null = null;
+      for await (const event of api.analyzeStream(body, controller.signal)) {
+        if (event.type === "agent_step") {
+          setLiveSteps((prev) => [...prev, event.step]);
+        } else if (event.type === "phase") {
+          setLivePhase(event.message || event.phase);
+        } else if (event.type === "complete") {
+          final = event.analysis;
+        } else if (event.type === "error") {
+          throw new Error(event.message);
+        }
+      }
+      if (final) setResult(final);
     } catch (err) {
+      if ((err as Error).name === "AbortError") return;
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
+      setLivePhase(null);
+      abortRef.current = null;
     }
   };
 
@@ -299,26 +325,57 @@ export function AnalyzePanel({
       </div>
 
       <div ref={resultRef}>
-        {loading ? <SkeletonResult /> : null}
-        {!loading && result ? <AnalysisResult analysis={result} /> : null}
+        {loading || liveSteps.length > 0 ? (
+          <LiveAgentPanel
+            steps={liveSteps}
+            phase={livePhase}
+            done={!loading && result !== null}
+          />
+        ) : null}
+        {!loading && result ? (
+          <AnalysisResult analysis={result} showAgentTrail={false} />
+        ) : null}
       </div>
     </div>
   );
 }
 
-function SkeletonResult() {
+function LiveAgentPanel({
+  steps,
+  phase,
+  done,
+}: {
+  steps: AgentStep[];
+  phase: string | null;
+  done: boolean;
+}) {
   return (
-    <div className="space-y-4 animate-fade-in">
-      <div className="card-pad space-y-3">
-        <div className="h-6 w-1/3 skeleton" />
-        <div className="h-4 w-2/3 skeleton" />
-        <div className="h-4 w-1/2 skeleton" />
+    <div className="card-pad animate-fade-in">
+      <div className="flex items-center gap-3 mb-4">
+        <div className="relative">
+          <span className="size-2.5 rounded-full bg-brand-400 absolute inset-0 m-auto" />
+          <span
+            className={cn(
+              "block size-3 rounded-full bg-brand-400/50",
+              !done && "animate-ping",
+            )}
+          />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-[11px] uppercase tracking-[0.18em] text-brand-300 font-semibold">
+            {done ? "Agent finished" : "Agent is thinking…"}
+          </div>
+          <div className="text-sm text-ink-300 mt-0.5 truncate">
+            {phase ?? (done ? "Synthesis complete." : "Working…")}
+          </div>
+        </div>
+        <span className="chip">{steps.length} steps</span>
       </div>
-      <div className="grid lg:grid-cols-2 gap-5">
-        <div className="card-pad h-44 skeleton" />
-        <div className="card-pad h-44 skeleton" />
-      </div>
-      <div className="card-pad h-64 skeleton" />
+      {steps.length > 0 ? <AgentTrail steps={steps} /> : (
+        <div className="text-sm text-ink-500 italic">
+          Waiting for the agent to take its first step…
+        </div>
+      )}
     </div>
   );
 }

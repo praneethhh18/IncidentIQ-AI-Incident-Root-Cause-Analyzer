@@ -6,6 +6,7 @@ import {
   FileDown,
   GitBranch,
   Layers,
+  Microscope,
   ShieldCheck,
   Sparkles,
   Workflow,
@@ -157,6 +158,11 @@ function SocialProof() {
 }
 
 const FEATURES = [
+  {
+    icon: Microscope,
+    title: "Forensic mode — reverse the cascade",
+    body: "Trace the failure back to patient zero, map the full propagation path, and see every entity caught in the blast radius. Inspired by malware-forensic tooling.",
+  },
   {
     icon: Brain,
     title: "Root cause in seconds",

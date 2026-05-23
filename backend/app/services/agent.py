@@ -29,7 +29,15 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable, Dict, List, Tuple
 
-from app.models import AgentStep, AnalyzeResponse, SourceKind
+from app.models import (
+    AgentStep,
+    AnalyzeResponse,
+    BlastRadiusEntity,
+    ForensicReport,
+    Severity,
+    SourceKind,
+    TimelineEvent,
+)
 from app.services.agent_tools import TOOLS, TOOL_CATALOG
 
 logger = logging.getLogger(__name__)
@@ -164,16 +172,63 @@ class IncidentAgent:
                 )
             )
 
-        # 7. Decision: ready to synthesise
+        # ── Forensic phase ────────────────────────────────────────────
+        # This is the Maya-style reverse-engineering: trace back to
+        # patient zero, map the blast radius, hypothesize the trigger.
+        trail.append(
+            AgentStep(
+                step=counter.next(),
+                kind="thought",
+                title="Pivot to forensic analysis",
+                detail=(
+                    "I have enough surface-level signal. Now reversing causality: "
+                    "find patient zero, map the blast radius, and hypothesize what "
+                    "actually birthed this incident."
+                ),
+            )
+        )
+
+        origin = self._call("trace_origin", trail, counter, logs=logs)
+        ctx["origin"] = origin
+
+        blast = self._call(
+            "compute_blast_radius",
+            trail,
+            counter,
+            services=entities.get("services", []),
+            roles=(roles or {}).get("roles", {}),
+            log_entities=entities,
+        )
+        ctx["blast_radius"] = blast
+
+        trigger = self._call(
+            "infer_trigger", trail, counter, log_entities=entities, logs=logs
+        )
+        ctx["trigger"] = trigger
+
+        trail.append(
+            AgentStep(
+                step=counter.next(),
+                kind="decision",
+                title="Forensic picture is complete",
+                detail=(
+                    f"Patient zero located ({(origin.get('event') or {}).get('timestamp', 'unknown')}). "
+                    f"Blast radius: {blast.get('total', 0)} entities. "
+                    f"Trigger hypothesis: {trigger.get('trigger', 'unknown')} "
+                    f"({int(trigger.get('confidence', 0) * 100)}% confidence)."
+                ),
+            )
+        )
+
+        # Final decision: ready to synthesise
         trail.append(
             AgentStep(
                 step=counter.next(),
                 kind="decision",
                 title="Hand off to root-cause synthesis",
                 detail=(
-                    "Observations are sufficient: I have entities, a chronological "
-                    "spine, candidate service roles, and at least one signal "
-                    "grounded in the raw logs. Synthesising the final analysis now."
+                    "Observations + forensic context are sufficient. Synthesising "
+                    "the final analysis now and attaching the forensic report."
                 ),
             )
         )
@@ -237,8 +292,99 @@ class IncidentAgent:
                 )
             )
 
+        # Attach the forensic report. If the LLM produced one, keep it.
+        # Otherwise synthesize one from the agent's observations.
+        if analysis.forensic is None:
+            forensic = self._build_forensic_from_observations(context, analysis)
+            if forensic is not None:
+                analysis.forensic = forensic
+                trail.append(
+                    AgentStep(
+                        step=counter.next(),
+                        kind="decision",
+                        title="Attach forensic report",
+                        detail=(
+                            "LLM did not supply a forensic block; assembling one "
+                            "from observed tool outputs (patient zero, blast "
+                            "radius, trigger hypothesis)."
+                        ),
+                    )
+                )
+
         analysis.agent_steps = trail
         return analysis
+
+    # ── Forensic synthesis from observations ─────────────────────────
+
+    def _build_forensic_from_observations(
+        self, context: Dict[str, Any], analysis: AnalyzeResponse
+    ) -> ForensicReport | None:
+        """Assemble a ForensicReport from the agent's tool observations.
+
+        Used when the LLM didn't return a forensic block (or fell back to
+        demo data). Guarantees that every analysis has a forensic view.
+        """
+        origin = (context.get("origin") or {}).get("event")
+        if not origin:
+            return None
+
+        # Patient zero — promote the earliest observed event to a TimelineEvent.
+        try:
+            patient_zero = TimelineEvent(
+                timestamp=origin["timestamp"],
+                label="Patient zero — first abnormal signal",
+                detail=origin["text"],
+                severity=_severity_for_level(origin.get("level", "WARN")),
+            )
+        except Exception:  # noqa: BLE001
+            return None
+
+        # Propagation path — derive from the chronological timeline.
+        timeline = analysis.timeline or []
+        propagation_path: List[str] = []
+        seen: set[str] = set()
+        for event in timeline:
+            for token in event.label.split():
+                token_clean = token.strip(".,;:!?").lower()
+                if token_clean.endswith(("-api", "-svc", "-service", "-worker", "-gateway", "-db")):
+                    if token_clean not in seen:
+                        propagation_path.append(token_clean)
+                        seen.add(token_clean)
+        # Fallback: just use the affected services as the path.
+        if not propagation_path:
+            propagation_path = [s.name for s in analysis.affected_services][:6]
+
+        # Blast radius — from the compute_blast_radius tool output.
+        raw_blast = (context.get("blast_radius") or {}).get("entities", [])
+        blast_radius: List[BlastRadiusEntity] = []
+        for entry in raw_blast:
+            try:
+                blast_radius.append(
+                    BlastRadiusEntity(
+                        kind=entry.get("kind", "service"),
+                        name=entry.get("name", "unknown"),
+                        impact=entry.get("impact", "Touched by the incident"),
+                        severity=_severity_for_kind(entry.get("kind", "service"), analysis.severity),
+                    )
+                )
+            except Exception:  # noqa: BLE001
+                continue
+
+        # Trigger hypothesis — from infer_trigger.
+        trigger = context.get("trigger") or {}
+        trigger_text = trigger.get("trigger", "Unknown trigger")
+        trigger_evidence = trigger.get("evidence", "")
+        if trigger_evidence:
+            trigger_text = f"{trigger_text}. {trigger_evidence}"
+
+        return ForensicReport(
+            patient_zero=patient_zero,
+            propagation_path=propagation_path[:6],
+            blast_radius=blast_radius,
+            trigger_hypothesis=trigger_text,
+            trigger_confidence=float(trigger.get("confidence", 0.5)),
+            minutes_to_detection=(context.get("origin") or {}).get("minutes_to_impact"),
+        )
 
     # ── Internal helpers ──────────────────────────────────────────────
 
@@ -345,6 +491,24 @@ def _summarise(tool_name: str, result: Dict[str, Any]) -> str:
             return "No similar incidents in local history."
         return ", ".join(f"{x['incident_id']} ({x['severity']})" for x in m)
     return _short(result, 200)
+
+
+def _severity_for_level(level: str) -> Severity:
+    upper = level.upper()
+    if upper == "FATAL":
+        return Severity.P1
+    if upper == "ERROR":
+        return Severity.P2
+    return Severity.P3
+
+
+def _severity_for_kind(kind: str, incident_severity: Severity) -> Severity:
+    # Surface entities (user segments) inherit the overall incident severity.
+    if kind in ("user_segment", "region"):
+        return incident_severity
+    if kind == "dependency":
+        return Severity.P2
+    return Severity.P3
 
 
 __all__ = ["IncidentAgent", "TOOL_CATALOG"]

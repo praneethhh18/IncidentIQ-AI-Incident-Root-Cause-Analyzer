@@ -153,6 +153,56 @@ def render_pdf(analysis: AnalyzeResponse) -> bytes:
         for line in analysis.evidence:
             story.append(Paragraph(_escape_pre(line), styles["mono"]))
 
+    if analysis.forensic:
+        story.append(Paragraph("Forensic report", styles["h2"]))
+        f = analysis.forensic
+        story.append(
+            Paragraph(
+                f"<b>Patient zero</b> ({f.patient_zero.timestamp.strftime('%H:%M:%S')}, "
+                f"{f.patient_zero.severity.value}): {_escape(f.patient_zero.label)}",
+                styles["body"],
+            )
+        )
+        story.append(Paragraph(_escape(f.patient_zero.detail), styles["muted"]))
+        if f.propagation_path:
+            story.append(
+                Paragraph(
+                    f"<b>Propagation path:</b> {_escape(' &rarr; '.join(f.propagation_path))}",
+                    styles["body"],
+                )
+            )
+        if f.blast_radius:
+            story.append(
+                Paragraph(
+                    f"<b>Blast radius ({len(f.blast_radius)} entities):</b>",
+                    styles["body"],
+                )
+            )
+            for entity in f.blast_radius:
+                sev = entity.severity.value if entity.severity else "—"
+                story.append(
+                    Paragraph(
+                        f"&bull; [{_escape(entity.kind)}] <b>{_escape(entity.name)}</b> "
+                        f"({sev}) — {_escape(entity.impact)}",
+                        styles["muted"],
+                    )
+                )
+        story.append(
+            Paragraph(
+                f"<b>Trigger hypothesis</b> "
+                f"({int(f.trigger_confidence * 100)}% confidence): "
+                f"{_escape(f.trigger_hypothesis)}",
+                styles["body"],
+            )
+        )
+        if f.minutes_to_detection is not None:
+            story.append(
+                Paragraph(
+                    f"<b>Mean time to detection (MTTD):</b> {f.minutes_to_detection} minutes",
+                    styles["muted"],
+                )
+            )
+
     if analysis.agent_steps:
         story.append(Paragraph("Agent reasoning trail", styles["h2"]))
         for step in analysis.agent_steps:

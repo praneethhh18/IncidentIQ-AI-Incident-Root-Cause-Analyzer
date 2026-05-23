@@ -112,6 +112,185 @@ def service_dependency_hints(services: List[str]) -> Dict[str, Any]:
     return {"roles": dict(role_map), "service_count": len(services)}
 
 
+def trace_origin(logs: str) -> Dict[str, Any]:
+    """FORENSIC TOOL: find patient zero — the earliest abnormal signal.
+
+    Walks the log timeline in order, returns the first WARN/ERROR/FATAL
+    event together with the gap to the first ERROR/FATAL (time-to-impact).
+    This is the "where did the cascade start" answer.
+    """
+    earliest_warn: Dict[str, Any] | None = None
+    earliest_error: Dict[str, Any] | None = None
+
+    for line in logs.splitlines():
+        ts_match = ISO_TS_RE.search(line)
+        lvl_match = ERROR_LEVEL_RE.search(line)
+        if not ts_match or not lvl_match:
+            continue
+        try:
+            ts = datetime.fromisoformat(ts_match.group(0).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+
+        level = lvl_match.group(0).upper()
+        event = {"timestamp": ts.isoformat(), "level": level, "text": line.strip()[:240]}
+
+        if level in ("WARN", "WARNING") and earliest_warn is None:
+            earliest_warn = event
+        if level in ("ERROR", "FATAL") and earliest_error is None:
+            earliest_error = event
+        if earliest_warn and earliest_error:
+            break
+
+    patient_zero = earliest_warn or earliest_error
+    detection: Dict[str, Any] = {"event": patient_zero, "minutes_to_impact": None}
+    if earliest_warn and earliest_error:
+        try:
+            t0 = datetime.fromisoformat(earliest_warn["timestamp"])
+            t1 = datetime.fromisoformat(earliest_error["timestamp"])
+            delta = (t1 - t0).total_seconds() / 60.0
+            detection["minutes_to_impact"] = round(delta, 1)
+            detection["first_user_visible_error"] = earliest_error
+        except ValueError:
+            pass
+
+    return detection
+
+
+def compute_blast_radius(
+    services: List[str],
+    roles: Dict[str, List[str]] | None = None,
+    log_entities: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    """FORENSIC TOOL: catalog every entity the incident touched.
+
+    Combines the service inventory, role classification, and signal
+    keywords into a typed blast-radius list (services, dependencies,
+    user-facing surfaces).
+    """
+    roles = roles or {}
+    log_entities = log_entities or {}
+    entities: List[Dict[str, str]] = []
+
+    role_lookup: Dict[str, str] = {}
+    for role, svcs in roles.items():
+        for svc in svcs:
+            role_lookup[svc] = role
+
+    for svc in services:
+        kind = "service"
+        role = role_lookup.get(svc, "service")
+        if role in ("database", "cache"):
+            kind = "dependency"
+        impact = f"Touched as {role}"
+        entities.append({"kind": kind, "name": svc, "role": role, "impact": impact})
+
+    # Infer user-facing surfaces from signal keywords
+    keywords = log_entities.get("signature_keywords") or []
+    if any(k in keywords for k in ("503", "504", "500", "5xx")):
+        entities.append(
+            {
+                "kind": "user_segment",
+                "name": "All authenticated users",
+                "role": "user_segment",
+                "impact": "Receiving 5xx responses on critical paths",
+            }
+        )
+    if "throttl" in keywords or "rate limit" in keywords:
+        entities.append(
+            {
+                "kind": "user_segment",
+                "name": "Heavy-traffic clients",
+                "role": "user_segment",
+                "impact": "Being throttled or rate-limited",
+            }
+        )
+    if "failover" in keywords:
+        entities.append(
+            {
+                "kind": "region",
+                "name": "Primary region",
+                "role": "region",
+                "impact": "Active failover in progress",
+            }
+        )
+
+    return {"entities": entities, "total": len(entities)}
+
+
+def infer_trigger(log_entities: Dict[str, Any], logs: str) -> Dict[str, Any]:
+    """FORENSIC TOOL: hypothesize what event birthed patient zero.
+
+    Looks for deploy / config-change / scale-event / dependency-failure
+    fingerprints in the log payload. Returns the strongest hypothesis
+    with a confidence score.
+    """
+    lowered = logs.lower()
+    keywords = log_entities.get("signature_keywords") or []
+
+    candidates: List[Dict[str, Any]] = []
+
+    if any(k in lowered for k in ("deploy", "rollout", "revision", "rev=", "git:")):
+        candidates.append(
+            {
+                "trigger": "Recent deploy / rollout",
+                "evidence": "Deploy or revision marker found in the logs.",
+                "confidence": 0.70,
+            }
+        )
+    if any(k in lowered for k in ("config reload", "config change", "configmap", "feature flag")):
+        candidates.append(
+            {
+                "trigger": "Config / feature-flag change",
+                "evidence": "Config-change indicator in the logs.",
+                "confidence": 0.65,
+            }
+        )
+    if any(k in lowered for k in ("scale", "hpa", "scaling", "replica count", "node added")):
+        candidates.append(
+            {
+                "trigger": "Scaling event (HPA / cluster autoscaler)",
+                "evidence": "Scaling activity present in the telemetry.",
+                "confidence": 0.55,
+            }
+        )
+    if "failover" in keywords or "clusterdown" in keywords:
+        candidates.append(
+            {
+                "trigger": "Upstream dependency failure (failover / cluster down)",
+                "evidence": "Dependency-level failover or unavailability detected.",
+                "confidence": 0.75,
+            }
+        )
+    if "exhausted" in keywords or "pool exhausted" in lowered:
+        candidates.append(
+            {
+                "trigger": "Resource exhaustion under sustained load",
+                "evidence": "Pool/queue exhaustion appears without an upstream trigger.",
+                "confidence": 0.60,
+            }
+        )
+    if "oom" in keywords or "outofmemory" in keywords:
+        candidates.append(
+            {
+                "trigger": "Memory pressure with no eviction policy",
+                "evidence": "OOM / heap-exhaustion signal in the logs.",
+                "confidence": 0.65,
+            }
+        )
+
+    if not candidates:
+        return {
+            "trigger": "Unknown — telemetry doesn't include a clear precipitating event",
+            "evidence": "No deploy / config / scaling / dependency signals found.",
+            "confidence": 0.30,
+        }
+
+    # Pick the highest-confidence candidate
+    candidates.sort(key=lambda c: c["confidence"], reverse=True)
+    return candidates[0]
+
+
 def query_similar_incidents(signature: str, limit: int = 3) -> Dict[str, Any]:
     """TOOL: look up past analyses whose root cause / title overlaps with the signature."""
     store: AnalysisStore = get_store()
@@ -145,6 +324,9 @@ TOOLS = {
     "correlate_timeline": correlate_timeline,
     "service_dependency_hints": service_dependency_hints,
     "query_similar_incidents": query_similar_incidents,
+    "trace_origin": trace_origin,
+    "compute_blast_radius": compute_blast_radius,
+    "infer_trigger": infer_trigger,
 }
 
 
@@ -168,5 +350,17 @@ TOOL_CATALOG = [
     {
         "name": "query_similar_incidents",
         "purpose": "Search the local incident history for past analyses that match the error signature.",
+    },
+    {
+        "name": "trace_origin",
+        "purpose": "Forensic: find patient zero — the earliest abnormal signal that started the cascade.",
+    },
+    {
+        "name": "compute_blast_radius",
+        "purpose": "Forensic: enumerate every entity (services, dependencies, user segments) the incident touched.",
+    },
+    {
+        "name": "infer_trigger",
+        "purpose": "Forensic: hypothesize the precipitating event (deploy / config / scaling / dependency) that birthed patient zero.",
     },
 ]

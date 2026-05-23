@@ -23,6 +23,7 @@ class SourceKind(str, Enum):
     GRAFANA = "grafana"
     NEWRELIC = "newrelic"
     DEMO = "demo"
+    WEBHOOK = "webhook"
 
 
 class TimelineEvent(BaseModel):
@@ -37,6 +38,45 @@ class AffectedService(BaseModel):
     role: str = Field(..., description="e.g. 'database', 'gateway', 'worker'")
     impact: str = Field(..., description="One-line summary of the impact")
     health: str = Field("degraded", description="healthy | degraded | down")
+
+
+class BlastRadiusEntity(BaseModel):
+    """One thing the incident touched — service, user segment, region, dependency."""
+
+    kind: str = Field(..., description="service | user_segment | region | dependency | data")
+    name: str
+    impact: str
+    severity: Severity | None = Field(default=None)
+
+
+class ForensicReport(BaseModel):
+    """Reverse-engineered view of the incident.
+
+    Inspired by malware-forensic tools that trace an infection back to
+    patient zero. We do the same for outages: find the first abnormal
+    signal, reconstruct how it propagated, list every entity it touched,
+    and hypothesize the trigger event that birthed it.
+    """
+
+    patient_zero: TimelineEvent = Field(
+        ..., description="The first observable abnormal signal — origin of the cascade."
+    )
+    propagation_path: List[str] = Field(
+        default_factory=list,
+        description="Ordered service-to-service hops describing how the failure spread.",
+    )
+    blast_radius: List[BlastRadiusEntity] = Field(
+        default_factory=list,
+        description="Every entity the incident touched, classified by kind.",
+    )
+    trigger_hypothesis: str = Field(
+        ..., description="Most-likely event that birthed patient zero (deploy / config change / traffic spike / dependency)."
+    )
+    trigger_confidence: float = Field(0.5, ge=0.0, le=1.0)
+    minutes_to_detection: int | None = Field(
+        default=None,
+        description="Time between patient zero and the first user-visible symptom.",
+    )
 
 
 class FixRecommendation(BaseModel):
@@ -108,6 +148,13 @@ class AnalyzeResponse(BaseModel):
     agent_steps: List[AgentStep] = Field(
         default_factory=list,
         description="Trace of the agent's reasoning: thoughts, tool calls, observations, decision.",
+    )
+    forensic: ForensicReport | None = Field(
+        default=None,
+        description=(
+            "Reverse-engineered view: patient zero, propagation path, blast radius, "
+            "and trigger hypothesis. Populated when the agent could trace causality."
+        ),
     )
 
 

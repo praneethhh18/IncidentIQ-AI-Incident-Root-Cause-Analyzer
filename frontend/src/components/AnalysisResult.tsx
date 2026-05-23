@@ -15,12 +15,19 @@ import { formatDateTime } from "@/lib/utils";
 import { AgentTrail } from "./AgentTrail";
 import { EvidenceList } from "./EvidenceList";
 import { FixRecommendations } from "./FixRecommendations";
+import { ForensicReport } from "./ForensicReport";
 import { IncidentTimeline } from "./IncidentTimeline";
 import { RootCauseCard } from "./RootCauseCard";
 import { ServiceGraph } from "./ServiceGraph";
 import { SeverityBadge } from "./SeverityBadge";
 
-export function AnalysisResult({ analysis }: { analysis: AnalyzeResponse }) {
+export function AnalysisResult({
+  analysis,
+  showAgentTrail = true,
+}: {
+  analysis: AnalyzeResponse;
+  showAgentTrail?: boolean;
+}) {
   return (
     <div className="space-y-5 animate-fade-in">
       <header className="card-pad">
@@ -75,6 +82,10 @@ export function AnalysisResult({ analysis }: { analysis: AnalyzeResponse }) {
         </div>
       </div>
 
+      {analysis.forensic ? (
+        <ForensicReport forensic={analysis.forensic} />
+      ) : null}
+
       <div className="grid lg:grid-cols-[1.1fr,1fr] gap-5">
         <div className="card-pad">
           <h3 className="text-sm font-semibold tracking-wide text-ink-50 uppercase mb-4">
@@ -97,7 +108,7 @@ export function AnalysisResult({ analysis }: { analysis: AnalyzeResponse }) {
         <EvidenceList lines={analysis.evidence} />
       </div>
 
-      {analysis.agent_steps && analysis.agent_steps.length > 0 ? (
+      {showAgentTrail && analysis.agent_steps && analysis.agent_steps.length > 0 ? (
         <div className="card-pad">
           <div className="flex items-center gap-2 mb-1">
             <Bot className="size-4 text-brand-300" />

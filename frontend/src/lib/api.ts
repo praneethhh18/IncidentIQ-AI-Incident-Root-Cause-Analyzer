@@ -5,6 +5,7 @@
 // and client components share the same surface.
 
 import type {
+  AgentStep,
   AnalyzeRequest,
   AnalyzeResponse,
   IncidentSummary,
@@ -79,4 +80,94 @@ export const api = {
 
   exportPdfUrl: (id: string) =>
     `${API_BASE}/api/v1/incidents/${id}/export.pdf`,
+
+  /**
+   * Stream an analysis using SSE-over-fetch. Yields events as they arrive:
+   *   { type: "phase", phase, message }
+   *   { type: "agent_step", step }
+   *   { type: "complete", analysis }
+   *   { type: "error", message }
+   *
+   * Pass an AbortSignal to cancel mid-stream (e.g. when the user navigates away).
+   */
+  analyzeStream: async function* (
+    body: AnalyzeRequest,
+    signal?: AbortSignal,
+  ): AsyncGenerator<StreamEvent> {
+    const response = await fetch(`${API_BASE}/api/v1/analyze/stream`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      },
+      body: JSON.stringify(body),
+      signal,
+    });
+
+    if (!response.ok || !response.body) {
+      const detail = await response.text().catch(() => response.statusText);
+      throw new ApiError(detail || "Stream failed", response.status);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let boundary = buffer.indexOf("\n\n");
+        while (boundary !== -1) {
+          const raw = buffer.slice(0, boundary);
+          buffer = buffer.slice(boundary + 2);
+          boundary = buffer.indexOf("\n\n");
+          const parsed = parseSseChunk(raw);
+          if (parsed) yield parsed;
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  },
 };
+
+export type StreamEvent =
+  | { type: "phase"; phase: string; message: string; log_lines?: number }
+  | { type: "agent_step"; step: AgentStep }
+  | { type: "complete"; analysis: AnalyzeResponse }
+  | { type: "error"; message: string };
+
+function parseSseChunk(raw: string): StreamEvent | null {
+  const lines = raw.split("\n");
+  let dataPayload = "";
+  for (const line of lines) {
+    if (line.startsWith("data:")) {
+      dataPayload += line.slice(5).trim();
+    }
+  }
+  if (!dataPayload) return null;
+  try {
+    const obj = JSON.parse(dataPayload);
+    const eventName: string = obj.event ?? "phase";
+    if (eventName === "agent_step") {
+      return { type: "agent_step", step: obj.step as AgentStep };
+    }
+    if (eventName === "complete") {
+      return { type: "complete", analysis: obj.analysis as AnalyzeResponse };
+    }
+    if (eventName === "error") {
+      return { type: "error", message: obj.message ?? "Unknown error" };
+    }
+    return {
+      type: "phase",
+      phase: obj.phase ?? "unknown",
+      message: obj.message ?? "",
+      log_lines: obj.log_lines,
+    };
+  } catch {
+    return null;
+  }
+}

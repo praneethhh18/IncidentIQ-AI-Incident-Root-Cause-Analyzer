@@ -70,7 +70,27 @@ SCHEMA_HINT = dedent(
           "priority": 1
         }
       ],
-      "evidence": ["string — quoted log line or metric snippet"]
+      "evidence": ["string — quoted log line or metric snippet"],
+      "forensic": {
+        "patient_zero": {
+          "timestamp": "ISO-8601 — the FIRST abnormal signal in the cascade",
+          "label": "Patient zero — short title",
+          "detail": "string — the originating event in one sentence",
+          "severity": "P1 | P2 | P3"
+        },
+        "propagation_path": ["service-a", "service-b", "service-c"],
+        "blast_radius": [
+          {
+            "kind": "service | user_segment | region | dependency | data",
+            "name": "string",
+            "impact": "string — what this entity experienced",
+            "severity": "P1 | P2 | P3"
+          }
+        ],
+        "trigger_hypothesis": "string — most-likely event that birthed patient zero (deploy / config / scaling / dependency failure / resource exhaustion)",
+        "trigger_confidence": 0.0,
+        "minutes_to_detection": 0
+      }
     }
     """
 ).strip()
