@@ -4,8 +4,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Github } from "lucide-react";
 
+import { ConditionalBackground } from "@/components/ConditionalBackground";
 import { ScrollProgress } from "@/components/ScrollProgress";
-import { SpectraNoise } from "@/components/SpectraNoise";
 
 export const metadata: Metadata = {
   title: "IncidentIQ. AI Incident Root Cause Analyzer.",
@@ -22,32 +22,13 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className="min-h-screen flex flex-col">
-        <BackgroundAurora />
+        <ConditionalBackground />
         <ScrollProgress />
         <NavBar />
         <main className="flex-1 w-full">{children}</main>
         <Footer />
       </body>
     </html>
-  );
-}
-
-function BackgroundAurora() {
-  return (
-    <div className="aurora-layer" aria-hidden>
-      <div className="aurora-canvas-wrap">
-        <SpectraNoise
-          hueShift={-25}
-          noiseIntensity={0.08}
-          scanlineIntensity={0}
-          scanlineFrequency={0}
-          warpAmount={0.55}
-          speed={0.55}
-          resolutionScale={0.7}
-        />
-      </div>
-      <div className="aurora-fade" />
-    </div>
   );
 }
 

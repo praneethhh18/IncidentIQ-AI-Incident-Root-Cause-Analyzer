@@ -57,6 +57,28 @@ body {
   );
 }
 
+/* ─── App background ──────────────────────────────────────────────────────
+   The product surface. Solid near-black with a faint dot grid for
+   texture. No motion, no color tint. Designed to recede so the working
+   content (dashboards, panels, incident details) stays in focus.
+*/
+.app-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -10;
+  pointer-events: none;
+  background-color: #08080A;
+  background-image:
+    radial-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    radial-gradient(
+      1100px 600px at 50% -30%,
+      rgba(255, 255, 255, 0.018),
+      transparent 70%
+    );
+  background-size: 22px 22px, auto;
+  background-position: 0 0, center top;
+}
+
 /* Make all stat-like numbers render with proportional spacing */
 .tabular-nums,
 code,
