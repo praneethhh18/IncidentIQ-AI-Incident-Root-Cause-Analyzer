@@ -100,70 +100,84 @@ function HeroPreview() {
       transition={{ duration: 0.7, ease: EASE, delay: 0.35 }}
       className="relative mx-auto max-w-6xl px-6 pb-20"
     >
-      <div className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-b from-ink-900 to-ink-950 shadow-glow overflow-hidden">
-        <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-white/[0.06] bg-ink-900/80">
-          <span className="size-2.5 rounded-full bg-red-400/60" />
-          <span className="size-2.5 rounded-full bg-amber-400/60" />
-          <span className="size-2.5 rounded-full bg-emerald-400/60" />
-          <span className="ml-3 text-[11px] text-ink-500 font-mono">
-            incidentiq · INC-A4F12C9B
+      <div className="relative rounded-2xl border border-white/[0.07] bg-ink-900/60 backdrop-blur overflow-hidden shadow-glow">
+        {/* Header bar: severity, incident id, duration */}
+        <div className="flex items-center gap-3 px-5 py-3 border-b border-white/[0.05] bg-ink-900/80">
+          <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10.5px] font-semibold text-sev-p1 bg-sev-p1/10 border border-sev-p1/25">
+            <span className="size-1.5 rounded-full bg-sev-p1" />
+            P1
+          </span>
+          <span className="font-mono text-[11px] text-ink-400 tabular-nums">
+            INC-A4F12C9B
+          </span>
+          <span className="text-ink-700">·</span>
+          <span className="text-[11.5px] text-ink-400 truncate">
+            Cascading checkout failure
+          </span>
+          <span className="ml-auto font-mono text-[11px] text-ink-500 tabular-nums">
+            3.1s
           </span>
         </div>
-        <div className="grid md:grid-cols-5 gap-0">
-          <div className="md:col-span-3 p-6 border-b md:border-b-0 md:border-r border-white/[0.06]">
-            <div className="flex items-center gap-2">
-              <span className="chip bg-sev-p1/15 text-sev-p1 border-sev-p1/30">
-                <span className="sev-dot sev-dot-p1" /> P1
-              </span>
-              <span className="chip">checkout-api · payments-worker · redis</span>
+
+        <div className="grid md:grid-cols-[1.5fr,1fr] gap-0">
+          {/* Left: analysis content */}
+          <div className="p-7 border-b md:border-b-0 md:border-r border-white/[0.05]">
+            <div className="text-[10.5px] uppercase tracking-[0.18em] text-ink-500 font-semibold">
+              Root cause
             </div>
-            <h3 className="mt-3 text-2xl font-semibold tracking-tight text-ink-50">
-              Cascading checkout failure
+            <h3 className="mt-2 text-[22px] font-semibold tracking-tight text-ink-50 leading-snug">
+              Postgres writer pool exhausted on checkout-api.
             </h3>
-            <p className="mt-3 text-sm text-ink-400 leading-relaxed">
-              Postgres writer pool exhausted on{" "}
-              <span className="text-ink-100 font-medium">checkout-api</span>,
+            <p className="mt-3 text-[13.5px] text-ink-400 leading-relaxed">
+              A long-running query held connections past pool timeout,
               back-pressuring{" "}
-              <span className="text-ink-100 font-medium">payments-worker</span>{" "}
+              <span className="text-ink-200 font-medium">payments-worker</span>{" "}
               until Redis hit CLUSTERDOWN. Within 110 seconds the api-gateway
-              tripped its circuit breaker and SLO burn reached 84x.
+              tripped its circuit breaker. SLO burn 84x.
             </p>
 
-            <div className="mt-5 grid grid-cols-3 gap-3">
+            <div className="mt-6 grid grid-cols-3 gap-x-6 gap-y-1">
               <Stat label="Confidence" value="92%" />
               <Stat label="Services" value="5" />
-              <Stat label="Analysis" value="3.1s" />
+              <Stat label="Blast radius" value="7" />
             </div>
           </div>
-          <div className="md:col-span-2 p-6 space-y-3 bg-ink-950/40">
-            <div className="text-[11px] uppercase tracking-wider text-ink-500">
+
+          {/* Right: timeline */}
+          <div className="p-7 bg-ink-950/30">
+            <div className="text-[10.5px] uppercase tracking-[0.18em] text-ink-500 font-semibold mb-4">
               Timeline
             </div>
-            {[
-              { t: "02:58:12", l: "DB pool pressure begins", s: "p3" },
-              { t: "02:59:11", l: "Pool exhausted", s: "p2" },
-              { t: "02:59:18", l: "Redis CLUSTERDOWN", s: "p1" },
-              { t: "03:00:02", l: "Circuit breaker opens", s: "p1" },
-              { t: "03:00:14", l: "payments-worker OOM", s: "p1" },
-            ].map((event, i) => (
-              <motion.div
-                key={event.t}
-                initial={{ opacity: 0, x: -6 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{
-                  duration: 0.4,
-                  ease: EASE,
-                  delay: 0.65 + i * 0.1,
-                }}
-                className="flex items-start gap-3 text-sm"
-              >
-                <span className="font-mono text-[11px] text-ink-500 mt-1 tabular-nums">
-                  {event.t}
-                </span>
-                <span className={`sev-dot mt-1.5 sev-dot-${event.s}`} />
-                <span className="text-ink-200">{event.l}</span>
-              </motion.div>
-            ))}
+            <ol className="relative space-y-3">
+              <span className="absolute left-[3.95rem] top-1 bottom-1 w-px bg-white/[0.06]" />
+              {[
+                { t: "02:58:12", l: "DB pool pressure begins", s: "p3" },
+                { t: "02:59:11", l: "Pool exhausted", s: "p2" },
+                { t: "02:59:18", l: "Redis CLUSTERDOWN", s: "p1" },
+                { t: "03:00:02", l: "Circuit breaker opens", s: "p1" },
+                { t: "03:00:14", l: "payments-worker OOM", s: "p1" },
+              ].map((event, i) => (
+                <motion.li
+                  key={event.t}
+                  initial={{ opacity: 0, x: -4 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{
+                    duration: 0.35,
+                    ease: EASE,
+                    delay: 0.65 + i * 0.08,
+                  }}
+                  className="relative grid grid-cols-[3.6rem,1rem,1fr] items-center gap-2 text-[12.5px]"
+                >
+                  <span className="font-mono text-[10.5px] text-ink-500 tabular-nums text-right">
+                    {event.t}
+                  </span>
+                  <span className="grid place-items-center">
+                    <span className={`sev-dot sev-dot-${event.s} ring-4 ring-ink-950`} />
+                  </span>
+                  <span className="text-ink-200 truncate">{event.l}</span>
+                </motion.li>
+              ))}
+            </ol>
           </div>
         </div>
       </div>
@@ -173,11 +187,11 @@ function HeroPreview() {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3">
-      <div className="text-[11px] uppercase tracking-wider text-ink-500">
+    <div>
+      <div className="text-[10px] uppercase tracking-[0.16em] text-ink-500 font-semibold">
         {label}
       </div>
-      <div className="text-xl font-semibold tracking-tight text-ink-50 mt-0.5">
+      <div className="text-[22px] font-semibold tracking-tight text-ink-50 tabular-nums mt-1">
         {value}
       </div>
     </div>

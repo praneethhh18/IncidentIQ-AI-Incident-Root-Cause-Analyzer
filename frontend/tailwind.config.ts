@@ -62,7 +62,9 @@ const config: Config = {
         ],
       },
       boxShadow: {
-        glow: "0 0 40px -10px rgba(99, 102, 241, 0.45)",
+        // Subtle white-ish elevation. Used on cards and hero panels.
+        // No colored glows, ever.
+        glow: "0 24px 60px -24px rgba(0, 0, 0, 0.6), 0 1px 0 rgba(255, 255, 255, 0.04) inset",
         card: "0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 24px -12px rgba(0,0,0,0.6)",
       },
       keyframes: {

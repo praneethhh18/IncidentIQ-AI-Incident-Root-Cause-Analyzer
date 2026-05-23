@@ -2,7 +2,7 @@ import "./globals.css";
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Activity, Github, Sparkles } from "lucide-react";
+import { Github } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "IncidentIQ. AI Incident Root Cause Analyzer.",
@@ -29,38 +29,31 @@ export default function RootLayout({
 
 function NavBar() {
   return (
-    <header className="sticky top-0 z-40 border-b border-white/[0.06] bg-ink-950/80 backdrop-blur-xl">
+    <header className="sticky top-0 z-40 border-b border-white/[0.05] bg-ink-950/70 backdrop-blur-xl">
       <div className="mx-auto max-w-7xl px-6 h-14 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2.5 group">
-          <div className="relative grid place-items-center size-7 rounded-md bg-brand-500/15 border border-brand-500/30">
-            <Activity className="size-3.5 text-brand-300 group-hover:text-brand-200 transition" />
-          </div>
-          <span className="font-semibold tracking-tight text-ink-50 text-[15px]">
-            IncidentIQ
-          </span>
-          <span className="hidden sm:inline-block ml-1 text-[11px] text-ink-500 font-normal">
-            for SRE
-          </span>
+        <Link
+          href="/"
+          className="font-semibold tracking-tight text-ink-50 text-[15px] hover:text-white transition"
+        >
+          IncidentIQ
+          <span className="text-ink-400 font-normal">.</span>
         </Link>
 
-        <nav className="flex items-center gap-1 text-sm">
+        <nav className="flex items-center gap-6 text-[13px]">
           <Link
             href="/dashboard"
-            className="px-3 py-1.5 rounded-lg text-ink-300 hover:text-ink-50 hover:bg-white/[0.06] transition"
+            className="text-ink-400 hover:text-ink-50 transition"
           >
             Dashboard
           </Link>
           <Link
             href="/incidents"
-            className="px-3 py-1.5 rounded-lg text-ink-300 hover:text-ink-50 hover:bg-white/[0.06] transition"
+            className="text-ink-400 hover:text-ink-50 transition"
           >
             History
           </Link>
-          <Link
-            href="/dashboard"
-            className="ml-2 btn-primary px-3 py-1.5 text-[13px]"
-          >
-            <Sparkles className="size-3.5" /> Analyze
+          <Link href="/dashboard" className="btn-primary px-3.5 py-1.5 text-[13px]">
+            Analyze
           </Link>
         </nav>
       </div>
