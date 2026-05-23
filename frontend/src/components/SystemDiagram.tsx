@@ -18,7 +18,8 @@
  * wires stay vector.
  */
 
-import { motion } from "framer-motion";
+import { useRef } from "react";
+import { motion, useScroll, useTransform } from "framer-motion";
 import {
   Activity,
   Bell,
@@ -118,8 +119,17 @@ const WIRES_OUT: Wire[] = OUTPUTS.map((n, i) => ({
 }));
 
 export function SystemDiagram() {
+  // Anchor scroll progress to this container. The diagram starts drawing
+  // as the top edge enters the bottom of the viewport, and is fully
+  // drawn by the time its center hits the center of the viewport.
+  const ref = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ["start 90%", "center 40%"],
+  });
+
   return (
-    <div className="relative w-full">
+    <div ref={ref} className="relative w-full">
       <svg
         viewBox={`0 0 ${VW} ${VH}`}
         className="w-full h-auto"
@@ -142,34 +152,20 @@ export function SystemDiagram() {
           </radialGradient>
         </defs>
 
-        {/* Wires (input -> agent and agent -> output) */}
-        {[...WIRES_IN, ...WIRES_OUT].map((w) => (
-          <g key={w.id}>
-            <path
-              d={w.d}
-              stroke="url(#wire)"
-              strokeWidth={1.25}
-              fill="none"
-              strokeLinecap="round"
-            />
-            {/* Travelling pulse dot */}
-            <circle r={3.5} fill="rgb(196, 181, 253)">
-              <animateMotion
-                dur="2.6s"
-                repeatCount="indefinite"
-                begin={`${w.delay}s`}
-                path={w.d}
-              />
-              <animate
-                attributeName="opacity"
-                values="0; 1; 1; 0"
-                keyTimes="0; 0.1; 0.9; 1"
-                dur="2.6s"
-                repeatCount="indefinite"
-                begin={`${w.delay}s`}
-              />
-            </circle>
-          </g>
+        {/* Wires draw themselves driven by scroll progress. Inputs first
+            (left-to-center), then outputs (center-to-right). The pulse
+            dots only start travelling once each wire has finished
+            drawing, so the sequence reads as: data arrives, agent
+            thinks, results emit. */}
+        {[...WIRES_IN, ...WIRES_OUT].map((w, idx) => (
+          <ScrollWire
+            key={w.id}
+            wire={w}
+            index={idx}
+            total={WIRES_IN.length + WIRES_OUT.length}
+            scrollYProgress={scrollYProgress}
+            inputsCount={WIRES_IN.length}
+          />
         ))}
 
         {/* Agent halo (rendered in SVG so it sits inside the same
@@ -191,6 +187,68 @@ export function SystemDiagram() {
         ))}
       </div>
     </div>
+  );
+}
+
+function ScrollWire({
+  wire,
+  index,
+  total,
+  scrollYProgress,
+  inputsCount,
+}: {
+  wire: Wire;
+  index: number;
+  total: number;
+  scrollYProgress: ReturnType<typeof useScroll>["scrollYProgress"];
+  inputsCount: number;
+}) {
+  // Each wire claims a slice of the scroll range. Inputs draw in the
+  // first 55% of the scroll arc, outputs in the next 40%. A 5% pad
+  // at the end keeps dots visible after the diagram is fully drawn.
+  const isInput = index < inputsCount;
+  const slot = isInput ? index : index - inputsCount;
+  const slotCount = isInput ? inputsCount : total - inputsCount;
+
+  const baseStart = isInput ? 0 : 0.55;
+  const baseEnd = isInput ? 0.55 : 0.95;
+  const range = baseEnd - baseStart;
+  const start = baseStart + (slot / slotCount) * range * 0.6;
+  const end = start + range * 0.4;
+
+  const pathLength = useTransform(scrollYProgress, [start, end], [0, 1]);
+  // Pulse-dot opacity ramps up after its wire is fully drawn.
+  const pulseOpacity = useTransform(scrollYProgress, [end - 0.02, end + 0.05], [0, 1]);
+
+  return (
+    <g>
+      <motion.path
+        d={wire.d}
+        stroke="url(#wire)"
+        strokeWidth={1.25}
+        fill="none"
+        strokeLinecap="round"
+        style={{ pathLength }}
+      />
+      <motion.g style={{ opacity: pulseOpacity }}>
+        <circle r={3.5} fill="rgb(196, 181, 253)">
+          <animateMotion
+            dur="2.6s"
+            repeatCount="indefinite"
+            begin={`${wire.delay}s`}
+            path={wire.d}
+          />
+          <animate
+            attributeName="opacity"
+            values="0; 1; 1; 0"
+            keyTimes="0; 0.1; 0.9; 1"
+            dur="2.6s"
+            repeatCount="indefinite"
+            begin={`${wire.delay}s`}
+          />
+        </circle>
+      </motion.g>
+    </g>
   );
 }
 

@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Github } from "lucide-react";
 
+import { ScrollProgress } from "@/components/ScrollProgress";
 import { SpectraNoise } from "@/components/SpectraNoise";
 
 export const metadata: Metadata = {
@@ -22,6 +23,7 @@ export default function RootLayout({
     <html lang="en" className="dark">
       <body className="min-h-screen flex flex-col">
         <BackgroundAurora />
+        <ScrollProgress />
         <NavBar />
         <main className="flex-1 w-full">{children}</main>
         <Footer />
