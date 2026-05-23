@@ -102,18 +102,17 @@ export function BeforeAfterCTA() {
 
   return (
     <section className="mx-auto max-w-6xl px-6 py-24">
-      <div className="relative overflow-hidden rounded-3xl border border-white/[0.06] bg-ink-900/40 backdrop-blur-sm">
-        <div className="px-8 pt-10 pb-2 text-center">
-          <h3 className="text-3xl md:text-4xl font-semibold tracking-tight text-ink-50">
-            What took 2 hours now takes 10 seconds.
-          </h3>
-          <p className="mt-3 text-ink-400 max-w-xl mx-auto">
-            Stop scrolling logs at 3am. Let the agent tell you what broke, why,
-            and exactly how to fix it.
-          </p>
-        </div>
+      <div className="text-center max-w-2xl mx-auto">
+        <h3 className="text-3xl md:text-4xl font-semibold tracking-tight text-ink-50">
+          What took 2 hours now takes 10 seconds.
+        </h3>
+        <p className="mt-3 text-ink-400">
+          Stop scrolling logs at 3am. Let the agent tell you what broke, why,
+          and exactly how to fix it.
+        </p>
+      </div>
 
-        <div className="grid md:grid-cols-[1fr,auto,1fr] gap-0 px-8 pt-10 pb-8">
+      <div className="grid md:grid-cols-[1fr,auto,1fr] gap-0 mt-12">
           {/* LEFT: chaos terminal */}
           <Pane
             badge="The old way"
@@ -208,15 +207,14 @@ export function BeforeAfterCTA() {
           </Pane>
         </div>
 
-        <div className="px-8 pb-10 flex flex-col items-center">
-          <Link
-            href="/dashboard"
-            className="btn-primary px-5 py-2.5 text-[14px] group"
-          >
-            Open the dashboard
-            <ArrowRight className="size-4 transition group-hover:translate-x-0.5" />
-          </Link>
-        </div>
+      <div className="mt-10 flex justify-center">
+        <Link
+          href="/dashboard"
+          className="btn-primary px-5 py-2.5 text-[14px] group"
+        >
+          Open the dashboard
+          <ArrowRight className="size-4 transition group-hover:translate-x-0.5" />
+        </Link>
       </div>
     </section>
   );
