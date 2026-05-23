@@ -42,41 +42,43 @@ body {
 
 .aurora-blob {
   position: absolute;
-  inset: -25% -15% auto -15%;
-  height: 80vh;
-  filter: blur(60px);
+  inset: -10% -10% auto -10%;
+  height: 95vh;
+  filter: blur(30px);
   will-change: transform;
   background: radial-gradient(
-    ellipse 70% 60% at 50% 30%,
-    rgba(139, 92, 246, 0.42) 0%,
-    rgba(124, 58, 237, 0.30) 18%,
-    rgba(91, 33, 182, 0.18) 35%,
-    rgba(49, 18, 99, 0.08) 55%,
+    ellipse 80% 75% at 50% 25%,
+    rgba(167, 139, 250, 0.95) 0%,
+    rgba(139, 92, 246, 0.82) 12%,
+    rgba(124, 58, 237, 0.65) 24%,
+    rgba(91, 33, 182, 0.42) 38%,
+    rgba(59, 7, 100, 0.20) 55%,
     transparent 75%
   );
   animation: aurora-drift 30s ease-in-out infinite;
 }
 
-/* Hard black fade beneath the glow so the bottom half of the page is
-   reliably pure black. Sits between the blob and the grain. */
+/* Hard fade to pure black for the bottom half of the viewport so the
+   glow stays anchored to the top. */
 .aurora-fade {
   position: absolute;
   inset: 0;
   background: linear-gradient(
     to bottom,
     transparent 0%,
-    transparent 35%,
-    rgba(9, 9, 11, 0.55) 55%,
-    #09090B 75%
+    transparent 40%,
+    rgba(9, 9, 11, 0.70) 60%,
+    #09090B 80%
   );
 }
 
-/* Film grain. SVG noise turbulence at low opacity. Breaks up the gradient
-   banding and makes the surface feel material rather than vector. */
+/* Film grain. SVG noise turbulence on top of the glow. Mid opacity +
+   overlay blend gives the gradient a printed/material feel and kills
+   banding. */
 .aurora-grain {
   position: absolute;
   inset: 0;
-  opacity: 0.18;
+  opacity: 0.45;
   mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.55 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
   background-size: 240px 240px;
