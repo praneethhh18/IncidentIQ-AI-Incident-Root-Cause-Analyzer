@@ -31,7 +31,9 @@ export default function RootLayout({
 function BackgroundAurora() {
   return (
     <div className="aurora-layer" aria-hidden>
-      <div className="aurora-blob aurora-blob-1" />
+      <div className="aurora-blob" />
+      <div className="aurora-fade" />
+      <div className="aurora-grain" />
     </div>
   );
 }
