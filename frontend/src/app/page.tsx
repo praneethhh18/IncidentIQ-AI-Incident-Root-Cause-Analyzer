@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { motion, useMotionTemplate, useMotionValue, useSpring } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
 
 import { EASE } from "@/lib/motion";
-import { CountUp, FadeIn } from "@/components/motion-primitives";
+import { FadeIn } from "@/components/motion-primitives";
 import { BeforeAfterCTA } from "@/components/BeforeAfterCTA";
 import { SystemDiagram } from "@/components/SystemDiagram";
 
@@ -77,47 +77,111 @@ function Hero() {
   );
 }
 
-const CASCADE_EVENTS = [
-  { t: "02:58:12", l: "DB pool pressure begins", s: "p3" as const },
-  { t: "02:59:11", l: "Pool exhausted", s: "p2" as const },
-  { t: "02:59:18", l: "Redis CLUSTERDOWN", s: "p1" as const },
-  { t: "03:00:02", l: "Circuit breaker opens", s: "p1" as const },
-  { t: "03:00:14", l: "payments-worker OOM", s: "p1" as const },
+// ── Demo scenarios ───────────────────────────────────────────────────────
+// Three real incident shapes drawn from the backend's demo_data.py. The
+// hero panel cycles through them on a loop, so the page feels like a
+// running product demo rather than a static screenshot.
+
+type Sev = "p1" | "p2" | "p3";
+
+interface Scenario {
+  id: string;
+  severity: "P1" | "P2" | "P3";
+  title: string;
+  rootCause: string;
+  summary: React.ReactNode;
+  stats: { confidence: number; services: number; blast: number };
+  cascade: { t: string; l: string; s: Sev }[];
+}
+
+const SCENARIOS: Scenario[] = [
+  {
+    id: "INC-A4F12C9B",
+    severity: "P1",
+    title: "Cascading checkout failure",
+    rootCause: "Postgres writer pool exhausted on checkout-api.",
+    summary: (
+      <>
+        A long-running query held connections past pool timeout, back-pressuring{" "}
+        <span className="text-ink-200 font-medium">payments-worker</span> until
+        Redis hit CLUSTERDOWN. The api-gateway tripped its circuit breaker.
+        SLO burn 84x.
+      </>
+    ),
+    stats: { confidence: 92, services: 5, blast: 7 },
+    cascade: [
+      { t: "02:58:12", l: "DB pool pressure begins", s: "p3" },
+      { t: "02:59:11", l: "Pool exhausted", s: "p2" },
+      { t: "02:59:18", l: "Redis CLUSTERDOWN", s: "p1" },
+      { t: "03:00:02", l: "Circuit breaker opens", s: "p1" },
+      { t: "03:00:14", l: "payments-worker OOM", s: "p1" },
+    ],
+  },
+  {
+    id: "INC-B7D219E4",
+    severity: "P2",
+    title: "Recommendations memory leak",
+    rootCause: "UserSimilarityCache growing unbounded in the JVM heap.",
+    summary: (
+      <>
+        An in-process cache without max-size or TTL filled the JVM heap. Pod
+        OOMKilled every ~50 minutes.{" "}
+        <span className="text-ink-200 font-medium">18%</span> of users seeing
+        fallback recommendations.
+      </>
+    ),
+    stats: { confidence: 88, services: 2, blast: 4 },
+    cascade: [
+      { t: "15:30:22", l: "Heap usage 60%", s: "p3" },
+      { t: "16:48:11", l: "Heap usage 79%", s: "p2" },
+      { t: "17:22:08", l: "Full GC pause 1.2s", s: "p2" },
+      { t: "17:51:30", l: "java.lang.OutOfMemoryError", s: "p1" },
+      { t: "17:51:31", l: "Pod OOMKilled, restart 5/4h", s: "p1" },
+    ],
+  },
+  {
+    id: "INC-91F3D5A8",
+    severity: "P1",
+    title: "RDS failover, replica lag",
+    rootCause: "Aurora writer failover with 18s replica lag, stale reads.",
+    summary: (
+      <>
+        Sustained slow queries triggered an Aurora failover. New replicas were{" "}
+        <span className="text-ink-200 font-medium">18.4s behind</span> the
+        writer, causing read-after-write inconsistencies on captured payments.
+      </>
+    ),
+    stats: { confidence: 84, services: 3, blast: 5 },
+    cascade: [
+      { t: "08:42:11", l: "SlowQuery 4.2s on orders", s: "p3" },
+      { t: "08:43:18", l: "Writer connection lost", s: "p2" },
+      { t: "08:43:18", l: "Failover to standby", s: "p2" },
+      { t: "08:44:01", l: "Replica lag 18.4s", s: "p1" },
+      { t: "08:44:09", l: "Stale read on order #91823", s: "p1" },
+    ],
+  },
 ];
 
+// One scenario = N cascade ticks at TICK_MS each + HOLD ticks at the end.
+const TICK_MS = 900;
+const HOLD_TICKS = 2;
+
 function HeroPreview() {
-  // ── Live cascade replay state ──────────────────────────────────────
-  // Cycles through the timeline events to show the failure propagating
-  // in real time. Once all events are surfaced, holds briefly, then
-  // resets. This is the part that makes the hero feel alive.
-  const [active, setActive] = useState(0);
+  // Global tick. Drives both which scenario is showing and how many
+  // cascade events have surfaced within it.
+  const [tick, setTick] = useState(0);
   useEffect(() => {
-    const step = setInterval(() => {
-      setActive((i) => (i + 1) % (CASCADE_EVENTS.length + 2));
-    }, 900);
-    return () => clearInterval(step);
+    const id = setInterval(() => setTick((t) => t + 1), TICK_MS);
+    return () => clearInterval(id);
   }, []);
-  const surfaced = Math.min(active, CASCADE_EVENTS.length);
 
-  // ── 3D parallax tilt on mouse ──────────────────────────────────────
-  // Subtle rotation tracked by springs so motion feels weighted. Tilt
-  // axes are inverted between X and Y so the card "looks at" the
-  // cursor rather than away from it.
-  const tiltX = useSpring(useMotionValue(0), { stiffness: 220, damping: 28 });
-  const tiltY = useSpring(useMotionValue(0), { stiffness: 220, damping: 28 });
-  const transform = useMotionTemplate`perspective(1400px) rotateX(${tiltX}deg) rotateY(${tiltY}deg)`;
-
-  const onMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const px = (e.clientX - rect.left) / rect.width - 0.5;
-    const py = (e.clientY - rect.top) / rect.height - 0.5;
-    tiltY.set(px * 5); // ±2.5deg
-    tiltX.set(-py * 4); // ±2deg
-  };
-  const onMouseLeave = () => {
-    tiltX.set(0);
-    tiltY.set(0);
-  };
+  // Scenarios all have 5 cascade rows. Each scenario "owns"
+  // (rows + HOLD_TICKS) ticks. After that we advance.
+  const ticksPerScenario = SCENARIOS[0].cascade.length + HOLD_TICKS;
+  const scenarioIdx = Math.floor(tick / ticksPerScenario) % SCENARIOS.length;
+  const localTick = tick % ticksPerScenario;
+  const scenario = SCENARIOS[scenarioIdx];
+  const surfaced = Math.min(localTick, scenario.cascade.length);
 
   return (
     <motion.div
@@ -126,135 +190,244 @@ function HeroPreview() {
       transition={{ duration: 0.7, ease: EASE, delay: 0.35 }}
       className="relative mx-auto max-w-6xl px-6 pb-20"
     >
-      <motion.div
-        onMouseMove={onMouseMove}
-        onMouseLeave={onMouseLeave}
-        style={{ transform, transformStyle: "preserve-3d" }}
-        className="relative rounded-2xl border border-white/[0.07] bg-ink-900/60 backdrop-blur overflow-hidden shadow-glow"
-      >
-        {/* Header bar */}
+      <div className="relative rounded-2xl border border-white/[0.07] bg-ink-900/60 backdrop-blur overflow-hidden shadow-glow">
+        {/* Persistent header bar (animates only the changing parts) */}
         <div className="flex items-center gap-3 px-5 py-3 border-b border-white/[0.05] bg-ink-900/80">
-          <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10.5px] font-semibold text-sev-p1 bg-sev-p1/10 border border-sev-p1/25">
-            <span className="size-1.5 rounded-full bg-sev-p1" />
-            P1
-          </span>
-          <span className="font-mono text-[11px] text-ink-400 tabular-nums">
-            INC-A4F12C9B
-          </span>
+          <AnimatePresence mode="popLayout">
+            <motion.span
+              key={`sev-${scenario.id}`}
+              initial={{ opacity: 0, y: -3 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 3 }}
+              transition={{ duration: 0.3, ease: EASE }}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10.5px] font-semibold border",
+                scenario.severity === "P1" &&
+                  "text-sev-p1 bg-sev-p1/10 border-sev-p1/25",
+                scenario.severity === "P2" &&
+                  "text-sev-p2 bg-sev-p2/10 border-sev-p2/25",
+                scenario.severity === "P3" &&
+                  "text-sev-p3 bg-sev-p3/10 border-sev-p3/25",
+              )}
+            >
+              <span
+                className={cn(
+                  "size-1.5 rounded-full",
+                  scenario.severity === "P1" && "bg-sev-p1",
+                  scenario.severity === "P2" && "bg-sev-p2",
+                  scenario.severity === "P3" && "bg-sev-p3",
+                )}
+              />
+              {scenario.severity}
+            </motion.span>
+          </AnimatePresence>
+
+          <AnimatePresence mode="popLayout">
+            <motion.span
+              key={`id-${scenario.id}`}
+              initial={{ opacity: 0, y: -3 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 3 }}
+              transition={{ duration: 0.3, ease: EASE, delay: 0.05 }}
+              className="font-mono text-[11px] text-ink-400 tabular-nums"
+            >
+              {scenario.id}
+            </motion.span>
+          </AnimatePresence>
+
           <span className="text-ink-700">·</span>
-          <span className="text-[11.5px] text-ink-400 truncate">
-            Cascading checkout failure
-          </span>
-          <span className="ml-auto flex items-center gap-1.5">
-            <span className="relative inline-flex size-1.5">
-              <span className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-70" />
-              <span className="relative size-1.5 rounded-full bg-emerald-400" />
-            </span>
-            <span className="font-mono text-[10.5px] text-ink-400 tabular-nums tracking-wider">
-              LIVE REPLAY
+
+          <AnimatePresence mode="popLayout">
+            <motion.span
+              key={`title-${scenario.id}`}
+              initial={{ opacity: 0, y: -3 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 3 }}
+              transition={{ duration: 0.3, ease: EASE, delay: 0.1 }}
+              className="text-[11.5px] text-ink-400 truncate"
+            >
+              {scenario.title}
+            </motion.span>
+          </AnimatePresence>
+
+          <span className="ml-auto flex items-center gap-3">
+            <ScenarioDots active={scenarioIdx} count={SCENARIOS.length} />
+            <span className="flex items-center gap-1.5">
+              <span className="relative inline-flex size-1.5">
+                <span className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-70" />
+                <span className="relative size-1.5 rounded-full bg-emerald-400" />
+              </span>
+              <span className="font-mono text-[10.5px] text-ink-400 tabular-nums tracking-wider">
+                LIVE DEMO
+              </span>
             </span>
           </span>
         </div>
 
-        <div className="grid md:grid-cols-[1.5fr,1fr] gap-0">
-          {/* Left: analysis content */}
-          <div className="p-7 border-b md:border-b-0 md:border-r border-white/[0.05]">
-            <div className="text-[10.5px] uppercase tracking-[0.18em] text-ink-500 font-semibold">
-              Root cause
-            </div>
-            <h3 className="mt-2 text-[22px] font-semibold tracking-tight text-ink-50 leading-snug">
-              Postgres writer pool exhausted on checkout-api.
-            </h3>
-            <p className="mt-3 text-[13.5px] text-ink-400 leading-relaxed">
-              A long-running query held connections past pool timeout,
-              back-pressuring{" "}
-              <span className="text-ink-200 font-medium">payments-worker</span>{" "}
-              until Redis hit CLUSTERDOWN. Within 110 seconds the api-gateway
-              tripped its circuit breaker. SLO burn 84x.
-            </p>
+        {/* Body: crossfades on scenario change. min-height locks the
+            visual size so cascades of differing label lengths don't jitter. */}
+        <div className="relative min-h-[300px]">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={scenario.id}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.4, ease: EASE }}
+              className="grid md:grid-cols-[1.5fr,1fr] gap-0"
+            >
+              <div className="p-7 border-b md:border-b-0 md:border-r border-white/[0.05]">
+                <div className="text-[10.5px] uppercase tracking-[0.18em] text-ink-500 font-semibold">
+                  Root cause
+                </div>
+                <h3 className="mt-2 text-[22px] font-semibold tracking-tight text-ink-50 leading-snug">
+                  {scenario.rootCause}
+                </h3>
+                <p className="mt-3 text-[13.5px] text-ink-400 leading-relaxed">
+                  {scenario.summary}
+                </p>
 
-            <div className="mt-6 grid grid-cols-3 gap-x-6 gap-y-1">
-              <Stat label="Confidence">
-                <CountUp to={92} format={(n) => `${n}%`} />
-              </Stat>
-              <Stat label="Services">
-                <CountUp to={5} />
-              </Stat>
-              <Stat label="Blast radius">
-                <CountUp to={7} />
-              </Stat>
-            </div>
-          </div>
+                <div className="mt-6 grid grid-cols-3 gap-x-6 gap-y-1">
+                  <Stat label="Confidence">
+                    <CountTo to={scenario.stats.confidence} suffix="%" />
+                  </Stat>
+                  <Stat label="Services">
+                    <CountTo to={scenario.stats.services} />
+                  </Stat>
+                  <Stat label="Blast radius">
+                    <CountTo to={scenario.stats.blast} />
+                  </Stat>
+                </div>
+              </div>
 
-          {/* Right: live cascade replay */}
-          <div className="p-7 bg-ink-950/30">
-            <div className="flex items-center justify-between mb-4">
-              <div className="text-[10.5px] uppercase tracking-[0.18em] text-ink-500 font-semibold">
-                Cascade
-              </div>
-              <div className="font-mono text-[10.5px] text-ink-500 tabular-nums">
-                step {Math.min(surfaced, CASCADE_EVENTS.length)}/{CASCADE_EVENTS.length}
-              </div>
-            </div>
-            <ol className="relative space-y-3">
-              <span className="absolute left-[3.95rem] top-1 bottom-1 w-px bg-white/[0.06]" />
-              {CASCADE_EVENTS.map((event, i) => {
-                const state =
-                  i < surfaced ? "past" : i === surfaced ? "active" : "future";
-                return (
-                  <li
-                    key={event.t}
-                    className="relative grid grid-cols-[3.6rem,1rem,1fr] items-center gap-2 text-[12.5px]"
-                  >
-                    <span
-                      className={cn(
-                        "font-mono text-[10.5px] tabular-nums text-right transition-colors duration-300",
-                        state === "future" ? "text-ink-700" : "text-ink-500",
-                      )}
-                    >
-                      {event.t}
-                    </span>
-                    <span className="grid place-items-center">
-                      <motion.span
-                        animate={
-                          state === "active"
-                            ? { scale: [1, 1.4, 1] }
-                            : { scale: 1 }
-                        }
-                        transition={{
-                          duration: 0.8,
-                          repeat: state === "active" ? Infinity : 0,
-                          ease: "easeInOut",
-                        }}
-                        className={cn(
-                          "sev-dot ring-4 ring-ink-950 transition-all duration-300",
-                          `sev-dot-${event.s}`,
-                          state === "future" && "opacity-25 !shadow-none",
-                          state === "past" && "opacity-90",
-                          state === "active" && "opacity-100",
-                        )}
-                      />
-                    </span>
-                    <span
-                      className={cn(
-                        "truncate transition-colors duration-300",
-                        state === "future"
-                          ? "text-ink-700"
-                          : state === "active"
-                          ? "text-ink-50 font-medium"
-                          : "text-ink-300",
-                      )}
-                    >
-                      {event.l}
-                    </span>
-                  </li>
-                );
-              })}
-            </ol>
-          </div>
+              <CascadePane
+                events={scenario.cascade}
+                surfaced={surfaced}
+              />
+            </motion.div>
+          </AnimatePresence>
         </div>
-      </motion.div>
+      </div>
     </motion.div>
+  );
+}
+
+function ScenarioDots({ active, count }: { active: number; count: number }) {
+  return (
+    <span className="flex items-center gap-1">
+      {Array.from({ length: count }, (_, i) => (
+        <span
+          key={i}
+          className={cn(
+            "h-[3px] rounded-full transition-all duration-500",
+            i === active
+              ? "w-5 bg-ink-100"
+              : "w-2 bg-ink-700",
+          )}
+        />
+      ))}
+    </span>
+  );
+}
+
+function CascadePane({
+  events,
+  surfaced,
+}: {
+  events: { t: string; l: string; s: Sev }[];
+  surfaced: number;
+}) {
+  return (
+    <div className="p-7 bg-ink-950/30">
+      <div className="flex items-center justify-between mb-4">
+        <div className="text-[10.5px] uppercase tracking-[0.18em] text-ink-500 font-semibold">
+          Cascade
+        </div>
+        <div className="font-mono text-[10.5px] text-ink-500 tabular-nums">
+          step {Math.min(surfaced, events.length)}/{events.length}
+        </div>
+      </div>
+      <ol className="relative space-y-3">
+        <span className="absolute left-[3.95rem] top-1 bottom-1 w-px bg-white/[0.06]" />
+        {events.map((event, i) => {
+          const state =
+            i < surfaced ? "past" : i === surfaced ? "active" : "future";
+          return (
+            <li
+              key={`${event.t}-${i}`}
+              className="relative grid grid-cols-[3.6rem,1rem,1fr] items-center gap-2 text-[12.5px]"
+            >
+              <span
+                className={cn(
+                  "font-mono text-[10.5px] tabular-nums text-right transition-colors duration-300",
+                  state === "future" ? "text-ink-700" : "text-ink-500",
+                )}
+              >
+                {event.t}
+              </span>
+              <span className="grid place-items-center">
+                <motion.span
+                  animate={
+                    state === "active" ? { scale: [1, 1.4, 1] } : { scale: 1 }
+                  }
+                  transition={{
+                    duration: 0.8,
+                    repeat: state === "active" ? Infinity : 0,
+                    ease: "easeInOut",
+                  }}
+                  className={cn(
+                    "sev-dot ring-4 ring-ink-950 transition-all duration-300",
+                    `sev-dot-${event.s}`,
+                    state === "future" && "opacity-25 !shadow-none",
+                    state === "past" && "opacity-90",
+                    state === "active" && "opacity-100",
+                  )}
+                />
+              </span>
+              <span
+                className={cn(
+                  "truncate transition-colors duration-300",
+                  state === "future"
+                    ? "text-ink-700"
+                    : state === "active"
+                    ? "text-ink-50 font-medium"
+                    : "text-ink-300",
+                )}
+              >
+                {event.l}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
+/** Lightweight count-up that animates whenever its `to` changes (so a
+ *  scenario switch counts fresh). Doesn't depend on `useInView` because
+ *  the parent crossfade already gates visibility. */
+function CountTo({ to, suffix = "" }: { to: number; suffix?: string }) {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    const start = performance.now();
+    const duration = 900;
+    let raf = 0;
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(2, -10 * t);
+      setN(Math.round(to * eased));
+      if (t < 1) raf = requestAnimationFrame(tick);
+      else setN(to);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [to]);
+  return (
+    <span className="tabular-nums">
+      {n}
+      {suffix}
+    </span>
   );
 }
 
