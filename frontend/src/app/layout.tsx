@@ -19,11 +19,22 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className="min-h-screen flex flex-col">
+        <BackgroundAurora />
         <NavBar />
         <main className="flex-1 w-full">{children}</main>
         <Footer />
       </body>
     </html>
+  );
+}
+
+function BackgroundAurora() {
+  return (
+    <div className="aurora-layer" aria-hidden>
+      <div className="aurora-blob aurora-blob-1" />
+      <div className="aurora-blob aurora-blob-2" />
+      <div className="aurora-blob aurora-blob-3" />
+    </div>
   );
 }
 
