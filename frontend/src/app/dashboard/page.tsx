@@ -90,7 +90,6 @@ export default async function DashboardPage() {
                 : "Integrations: -"
             }
           />
-          <WatchToggle />
           {recent.length > 0 ? (
             <Link
               href="/incidents"
@@ -103,6 +102,14 @@ export default async function DashboardPage() {
           ) : null}
         </div>
       </header>
+
+      {/* Watch Mode card. Sits between the page header and the
+          Analyze panel so it reads as a parallel action ("manually
+          analyze a paste below, OR enable hands-off detection right
+          here") instead of disappearing into the status-pill rail. */}
+      <div className="mb-6">
+        <WatchToggle />
+      </div>
 
       <Suspense>
         <AnalyzePanel samples={samples} integrations={integrations} />

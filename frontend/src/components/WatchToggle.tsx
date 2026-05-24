@@ -1,22 +1,28 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Radar, RadioTower } from "lucide-react";
+import {
+  ArrowRight,
+  Loader2,
+  Radar,
+  RadioTower,
+  Square,
+  Sparkles,
+} from "lucide-react";
 
 import { api } from "@/lib/api";
 import type { WatchStatusPayload } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
- * Status pill + on/off control for Watch Mode. When the backend
- * watcher is running we poll its status every 5 seconds so the user
- * sees the last-polled timestamp tick and the auto-incident counter
- * advance without a page refresh.
+ * Hands-off detection card. Reads as a proper feature CTA, not a tiny
+ * status pill - judges should immediately understand this is a thing
+ * they can turn on, not a label. When the background poller is
+ * running we flip into a "watching" state with live counters.
  *
- * Mounting this on the dashboard surface gives the demo its "I
- * haven't touched the keyboard and an incident just appeared"
- * moment - the recent-incidents list updates because the watcher
- * persisted a new analysis to the same store.
+ * Polls /watch/status every 5s while running, so the operator sees
+ * the last-polled timestamp tick and the auto-incident counter
+ * advance without a page refresh.
  */
 export function WatchToggle({
   onIncidentCreated,
@@ -81,44 +87,100 @@ export function WatchToggle({
   const lastPolledRel = relativeTime(status?.last_polled_at);
 
   return (
-    <div className="inline-flex items-center gap-2">
+    <div
+      className={cn(
+        "rounded-xl border px-4 sm:px-5 py-3.5 sm:py-4 flex items-center justify-between gap-4 flex-wrap transition",
+        running
+          ? "border-emerald-500/30 bg-emerald-500/[0.04]"
+          : "border-white/[0.07] bg-white/[0.02] hover:bg-white/[0.04]",
+      )}
+    >
+      <div className="flex items-start gap-3 min-w-0">
+        <div
+          className={cn(
+            "shrink-0 size-9 rounded-lg grid place-items-center border",
+            running
+              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+              : "border-white/[0.08] bg-white/[0.04] text-ink-200",
+          )}
+        >
+          {running ? (
+            <RadioTower className="size-4" />
+          ) : (
+            <Radar className="size-4" />
+          )}
+        </div>
+
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-[13.5px] sm:text-[14px] font-semibold text-ink-50">
+            {running ? "Watching production" : "Hands-off detection"}
+            {running ? (
+              <span className="inline-flex items-center gap-1 chip text-[10px] py-0 bg-emerald-500/15 text-emerald-200 border-emerald-500/30">
+                <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                live
+              </span>
+            ) : null}
+          </div>
+          <div className="text-[12px] text-ink-400 mt-0.5 leading-snug">
+            {running ? (
+              <>
+                Polling Datadog every {status?.poll_interval_s ?? 60}s for new
+                errors. Last polled {lastPolledRel}.{" "}
+                <span className="text-emerald-200 font-medium">
+                  {status?.incidents_created ?? 0} auto-incident
+                  {(status?.incidents_created ?? 0) === 1 ? "" : "s"}
+                </span>{" "}
+                created since start.
+              </>
+            ) : (
+              <>
+                Turn this on and IncidentIQ auto-creates incidents whenever
+                Datadog sees a fresh error cluster on{" "}
+                <span className="text-ink-200">fashion-aura-api</span>. No
+                manual analyze clicks.
+              </>
+            )}
+          </div>
+          {error ? (
+            <div className="mt-1.5 text-[11.5px] text-red-300">{error}</div>
+          ) : null}
+        </div>
+      </div>
+
       <button
         onClick={toggle}
         disabled={busy}
-        title={running ? "Stop auto-polling Datadog" : "Auto-poll Datadog for new errors"}
         className={cn(
-          "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium border transition",
+          "shrink-0 inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-[13px] font-medium border transition",
           running
-            ? "bg-emerald-500/10 text-emerald-200 border-emerald-500/25 hover:bg-emerald-500/15"
-            : "bg-white/[0.04] text-ink-200 border-white/[0.07] hover:bg-white/[0.07]",
-          busy && "opacity-60",
+            ? "bg-white/[0.04] text-ink-200 border-white/[0.10] hover:bg-red-500/10 hover:text-red-200 hover:border-red-500/30"
+            : "bg-brand-500/15 text-brand-100 border-brand-500/40 hover:bg-brand-500/25",
+          busy && "opacity-60 cursor-wait",
         )}
+        title={
+          running
+            ? "Stop the background poller"
+            : "Start auto-polling Datadog for new errors"
+        }
       >
         {busy ? (
-          <Loader2 className="size-3 animate-spin" />
+          <Loader2 className="size-3.5 animate-spin" />
         ) : running ? (
-          <RadioTower className="size-3" />
+          <Square className="size-3.5" />
         ) : (
-          <Radar className="size-3" />
+          <Sparkles className="size-3.5" />
         )}
-        {running ? "Watching production" : "Start Watch Mode"}
+        {running ? "Stop watching" : "Start Watch Mode"}
+        {!running && !busy ? (
+          <ArrowRight className="size-3.5 -mr-1" />
+        ) : null}
       </button>
-
-      {running && status ? (
-        <span className="text-[10.5px] text-ink-500 font-mono tabular-nums">
-          polled {lastPolledRel} · {status.incidents_created} auto-incidents
-        </span>
-      ) : null}
-
-      {error ? (
-        <span className="text-[10.5px] text-red-300">{error}</span>
-      ) : null}
     </div>
   );
 }
 
 function relativeTime(iso: string | null | undefined): string {
-  if (!iso) return "—";
+  if (!iso) return "(starting)";
   const t = new Date(iso).getTime();
   const diff = Math.max(0, Date.now() - t);
   const s = Math.floor(diff / 1000);
