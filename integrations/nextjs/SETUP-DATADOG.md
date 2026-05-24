@@ -50,7 +50,7 @@ In `C:/Users/Praneeth p/FashionAura/.env.local`, append:
 
 ```
 DATADOG_API_KEY=<the API key from step 2a>
-DATADOG_SITE=datadoghq.com
+DATADOG_SITE=us5.datadoghq.com    # change to match your region (datadoghq.com, us3.datadoghq.com, us5.datadoghq.com, datadoghq.eu, ap1.datadoghq.com)
 ```
 
 Restart FashionAura's dev server (Ctrl+C, then `npm run dev` again).
@@ -62,7 +62,7 @@ In `C:/Users/Praneeth p/OneDrive/Desktop/IncidentIQ/backend/.env`, fill in:
 ```
 DATADOG_API_KEY=<same API key from step 2a>
 DATADOG_APP_KEY=<the APP key from step 2b>
-DATADOG_SITE=datadoghq.com
+DATADOG_SITE=us5.datadoghq.com    # change to match your region (datadoghq.com, us3.datadoghq.com, us5.datadoghq.com, datadoghq.eu, ap1.datadoghq.com)
 ```
 
 Restart the IncidentIQ backend (kill the process, run `python -m uvicorn app.main:app --port 8000` again).
