@@ -145,13 +145,31 @@ def generate_code_fix(
         )
     )
 
-    # 5) VERIFY - apply patch in a scratch copy, run a quick check.
+    # 5) VERIFY - apply patch in a scratch copy, run a quick check, AND
+    # honestly flag patches that are only whitespace/no-op edits so we
+    # never claim a meaningful fix when there isn't one.
     t0 = time.perf_counter()
     verify_passed, verify_output = _verify(repo_root, diagnosis.file_path, diff_text)
+    cosmetic = _is_cosmetic_diff(diff_text)
+    if verify_passed and cosmetic:
+        verify_passed = False
+        verify_output = (
+            "Patch applied cleanly BUT only changes whitespace / no-op "
+            "casts. The incident's root cause may not exist in this file. "
+            "Treat as a suggestion; do not auto-apply.\n\n" + verify_output
+        )
     sub_steps.append(
         CodeFixSubStep(
             name="verify",
-            summary="lint passed" if verify_passed else "lint failed (review patch)",
+            summary=(
+                "lint passed"
+                if verify_passed
+                else (
+                    "cosmetic only - needs human review"
+                    if cosmetic
+                    else "lint failed (review patch)"
+                )
+            ),
             detail=verify_output[:500],
             duration_ms=int((time.perf_counter() - t0) * 1000),
         )
@@ -742,6 +760,40 @@ def _read_file_capped(
     if len(text) > max_chars:
         text = text[:max_chars] + "\n# ... [file truncated]\n"
     return text
+
+
+def _is_cosmetic_diff(diff_text: str) -> bool:
+    """True when the diff only changes whitespace or removes ``as any`` casts.
+
+    Important honesty guard: when the LLM has nothing meaningful to
+    change (because the incident's root cause doesn't actually exist in
+    the chosen file) it tends to produce whitespace fiddling that
+    applies cleanly but fixes nothing. We surface that as 'cosmetic -
+    needs human review' instead of letting the green 'verified' badge
+    over-claim.
+    """
+    plus: list[str] = []
+    minus: list[str] = []
+    for line in diff_text.splitlines():
+        if line.startswith("+++ ") or line.startswith("--- ") or line.startswith("@@"):
+            continue
+        if line.startswith("+"):
+            plus.append(line[1:])
+        elif line.startswith("-"):
+            minus.append(line[1:])
+
+    if not plus and not minus:
+        return True  # empty diff
+
+    def _strip_for_compare(lines: list[str]) -> str:
+        # Remove whitespace AND `as any` casts (and trailing semicolons
+        # that come along with them) so we don't credit pure noise.
+        joined = "".join(lines)
+        joined = re.sub(r"\s+", "", joined)
+        joined = joined.replace("asany", "")
+        return joined
+
+    return _strip_for_compare(plus) == _strip_for_compare(minus)
 
 
 def _normalise_diff(text: str) -> str:

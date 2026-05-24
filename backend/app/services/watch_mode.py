@@ -153,7 +153,13 @@ class WatchService:
         s.last_polled_at = datetime.now(timezone.utc)
 
         # Build the query based on the user's service filter (if any).
-        query_terms = ["status:error OR status:warn"]
+        # Severity range matches what the dashboard's Auto mode uses, so
+        # an operator who flips Watch on sees the same line count they'd
+        # see clicking Analyze manually.
+        severity_filter = (
+            "status:(emergency OR critical OR alert OR error OR warn OR warning)"
+        )
+        query_terms = [severity_filter]
         if s.service_filter:
             query_terms.insert(0, f"service:{s.service_filter}")
         query = " ".join(query_terms)

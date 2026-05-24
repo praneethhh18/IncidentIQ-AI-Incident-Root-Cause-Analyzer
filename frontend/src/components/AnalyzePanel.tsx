@@ -77,7 +77,9 @@ export function AnalyzePanel({
     let cancelled = false;
     (async () => {
       try {
-        const res = await api.datadogServices(60);
+        // 6 hours covers a hackathon session's worth of test events
+        // without crossing into yesterday's noise.
+        const res = await api.datadogServices(360);
         if (cancelled) return;
         setDatadogServices(res.services ?? []);
         setDatadogServicesLoaded(true);
@@ -135,13 +137,17 @@ export function AnalyzePanel({
         TABS.find((t) => t.id === tab)?.source ?? ("paste" as SourceKind);
 
       // For Datadog in Auto mode, synthesise the query from the picked
-      // service so the user never has to learn DD query syntax. Advanced
-      // mode passes the user-typed query straight through.
+      // service. We include warn / critical / emergency in addition to
+      // error so the incident view matches what the user sees in the
+      // Datadog console - previously we silently filtered everything
+      // except status:error and judges noticed the gap.
       let effectiveQuery = query;
       if (source === "datadog" && !datadogAdvanced) {
+        const severityFilter =
+          "status:(emergency OR critical OR alert OR error OR warn OR warning)";
         effectiveQuery = datadogService
-          ? `service:${datadogService} status:error`
-          : "status:error";
+          ? `service:${datadogService} ${severityFilter}`
+          : severityFilter;
       }
 
       const body = {
@@ -486,9 +492,10 @@ function DatadogTabBody({
       <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.04] p-3 text-[12.5px] text-ink-300 leading-relaxed flex items-start gap-2">
         <Zap className="size-3.5 mt-0.5 text-emerald-300 shrink-0" />
         <div>
-          IncidentIQ pulls errors directly from your connected Datadog
-          account. Pick a service (or leave it on All) and click Analyze —
-          no query syntax needed.
+          IncidentIQ pulls every error, warning and emergency from your
+          connected Datadog account — exactly what you see in the
+          Datadog console. Pick a service (or leave it on All) and
+          click Analyze. No query syntax needed.
         </div>
       </div>
 
