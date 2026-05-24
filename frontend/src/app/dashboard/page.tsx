@@ -59,11 +59,7 @@ export default async function DashboardPage() {
         <div className="flex items-center gap-2 flex-wrap">
           <StatusPill
             tone={health.bedrock_enabled ? "live" : "demo"}
-            label={
-              health.bedrock_enabled
-                ? `Model: ${health.model.replace("amazon.", "")}`
-                : "Demo mode"
-            }
+            label={health.bedrock_enabled ? "AI online" : "Demo mode"}
             icon={<Cpu className="size-3" />}
           />
           <StatusPill

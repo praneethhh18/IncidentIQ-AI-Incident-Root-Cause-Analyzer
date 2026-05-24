@@ -26,6 +26,14 @@ logger = logging.getLogger(__name__)
 
 MAX_LOG_CHARS = 80_000  # ~16k tokens — generous, still safely below model limits
 
+# In live mode (Bedrock enabled) we refuse to "analyze" telemetry that has
+# essentially no signal. Calling the LLM on a single sentinel comment line
+# invites it to invent an incident from nothing, so we reject upstream
+# instead. Thresholds are deliberately permissive - a handful of error
+# lines is plenty for real analysis.
+_MIN_SIGNAL_LINES = 3
+_SIGNAL_LEVEL_TOKENS = ("error", "fatal", "warn", "warning", "exception", "panic")
+
 
 class Analyzer:
     """High-level orchestration around Bedrock + integrations + fallbacks."""
@@ -66,6 +74,17 @@ class Analyzer:
             yield {
                 "event": "error",
                 "message": "No logs provided. Paste/upload a payload or configure an integration.",
+            }
+            return
+
+        if self._bedrock.enabled and not _has_enough_signal(logs):
+            yield {
+                "event": "error",
+                "message": (
+                    "Telemetry returned no error-level signal in this window. "
+                    "Nothing to analyze - try widening the time window or "
+                    "loosening the query."
+                ),
             }
             return
 
@@ -140,6 +159,13 @@ class Analyzer:
                 "configure an integration and pass an integration_query."
             )
 
+        if self._bedrock.enabled and not _has_enough_signal(logs):
+            raise ValueError(
+                "Telemetry returned no error-level signal in this window. "
+                "Nothing to analyze - try widening the time window or "
+                "loosening the query."
+            )
+
         truncated = _truncate_logs(logs)
 
         # Phase 1 — agent runs its deterministic plan/observe loop and gathers
@@ -209,8 +235,11 @@ class Analyzer:
         source: SourceKind,
         title: str | None,
     ) -> AnalyzeResponse:
+        # Demo mode is legitimate only when Bedrock isn't configured at all.
+        # In live mode we never silently substitute the pre-canned demo
+        # analysis - that would present fabricated data as a real result.
         if not self._bedrock.enabled:
-            logger.info("Bedrock disabled — returning demo fallback analysis")
+            logger.info("Bedrock disabled - returning demo fallback analysis")
             return _stamp_fallback(fallback_analysis(logs), title)
 
         user_prompt = build_user_prompt(
@@ -227,20 +256,21 @@ class Analyzer:
                 max_tokens=2048,
                 temperature=0.2,
             )
-        except BedrockUnavailable as exc:
-            logger.warning("Bedrock unavailable, falling back to demo: %s", exc)
-            return _stamp_fallback(fallback_analysis(logs), title)
+        except BedrockUnavailable:
+            # Surface honestly rather than masking with canned demo content.
+            logger.exception("Bedrock call failed in live mode")
+            raise
 
         try:
-            response = AnalyzeResponse(
+            return AnalyzeResponse(
                 model=self._bedrock.model_id,
                 **payload,
             )
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             logger.exception("Bedrock returned payload that failed schema validation")
-            return _stamp_fallback(fallback_analysis(logs), title)
-
-        return response
+            raise BedrockUnavailable(
+                f"Model returned a response that didn't match the analysis schema: {exc}"
+            ) from exc
 
 
 def _stamp_fallback(response: AnalyzeResponse, title: str | None) -> AnalyzeResponse:
@@ -255,3 +285,20 @@ def _truncate_logs(logs: str) -> str:
     head = logs[: MAX_LOG_CHARS // 2]
     tail = logs[-MAX_LOG_CHARS // 2 :]
     return f"{head}\n\n… [truncated {len(logs) - MAX_LOG_CHARS} chars] …\n\n{tail}"
+
+
+def _has_enough_signal(logs: str) -> bool:
+    """True when the payload has enough error-level signal to analyze.
+
+    A monitoring pull that returns zero error lines (or a single sentinel
+    comment from the integration saying 'no events found') is not an
+    incident - we refuse to fabricate one out of it.
+    """
+    real_lines = [
+        line for line in logs.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    if len(real_lines) < _MIN_SIGNAL_LINES:
+        return False
+    lowered = logs.lower()
+    return any(tok in lowered for tok in _SIGNAL_LEVEL_TOKENS)

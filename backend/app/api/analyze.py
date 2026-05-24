@@ -12,6 +12,7 @@ from typing import Optional
 from app.api.deps import get_analyzer, get_analysis_store
 from app.models import AnalyzeRequest, AnalyzeResponse, SourceKind
 from app.services.analyzer import Analyzer
+from app.services.bedrock import BedrockUnavailable
 from app.services.store import AnalysisStore
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,10 @@ async def analyze(
         result = await analyzer.analyze(request)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except BedrockUnavailable as exc:
+        # Surface this as a 502: we tried to call the model, the model
+        # didn't give us a usable answer. Don't mask with demo data.
+        raise HTTPException(status_code=502, detail=f"Model call failed: {exc}") from exc
     except Exception as exc:  # noqa: BLE001
         logger.exception("Analyzer failed")
         raise HTTPException(status_code=500, detail="Internal analyzer error") from exc
