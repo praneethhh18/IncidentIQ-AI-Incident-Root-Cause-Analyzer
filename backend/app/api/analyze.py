@@ -9,14 +9,39 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sse_starlette.sse import EventSourceResponse
 from typing import Optional
 
-from app.api.deps import get_analyzer, get_analysis_store
+from typing import Optional
+
+from app.api.deps import (
+    get_analyzer,
+    get_analysis_store,
+    get_session_store,
+    session_id_header,
+)
 from app.models import AnalyzeRequest, AnalyzeResponse, SourceKind
 from app.services.analyzer import Analyzer
 from app.services.bedrock import BedrockUnavailable
+from app.services.session_creds import SessionCredentialStore
 from app.services.store import AnalysisStore
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _pick_overrides(
+    source: SourceKind,
+    session_store: SessionCredentialStore,
+    session_id: Optional[str],
+) -> Optional[object]:
+    """Pick the right per-session credentials dataclass for the request's source."""
+    if session_id is None:
+        return None
+    if source == SourceKind.DATADOG:
+        return session_store.get_datadog(session_id)
+    if source == SourceKind.GRAFANA:
+        return session_store.get_grafana(session_id)
+    if source == SourceKind.NEWRELIC:
+        return session_store.get_newrelic(session_id)
+    return None
 
 
 @router.post("/analyze", response_model=AnalyzeResponse)
@@ -24,10 +49,13 @@ async def analyze(
     request: AnalyzeRequest,
     analyzer: Analyzer = Depends(get_analyzer),
     store: AnalysisStore = Depends(get_analysis_store),
+    session_store: SessionCredentialStore = Depends(get_session_store),
+    session_id: Optional[str] = Depends(session_id_header),
 ) -> AnalyzeResponse:
     """Run a root-cause analysis on the supplied logs or integration query."""
+    overrides = _pick_overrides(request.source, session_store, session_id)
     try:
-        result = await analyzer.analyze(request)
+        result = await analyzer.analyze(request, credential_overrides=overrides)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except BedrockUnavailable as exc:
@@ -47,7 +75,10 @@ async def analyze_stream(
     request: AnalyzeRequest,
     analyzer: Analyzer = Depends(get_analyzer),
     store: AnalysisStore = Depends(get_analysis_store),
+    session_store: SessionCredentialStore = Depends(get_session_store),
+    session_id: Optional[str] = Depends(session_id_header),
 ) -> EventSourceResponse:
+    overrides = _pick_overrides(request.source, session_store, session_id)
     """SSE variant of ``/analyze`` that streams the agent's reasoning live.
 
     The client opens an EventSource on this endpoint and receives a
@@ -62,7 +93,7 @@ async def analyze_stream(
     async def event_publisher():
         final_payload = None
         try:
-            async for event in analyzer.analyze_stream(request):
+            async for event in analyzer.analyze_stream(request, credential_overrides=overrides):
                 if event["event"] == "complete":
                     final_payload = event["analysis"]
                 yield {

@@ -6,6 +6,7 @@ import { Github } from "lucide-react";
 
 import { ConditionalBackground } from "@/components/ConditionalBackground";
 import { ScrollProgress } from "@/components/ScrollProgress";
+import { SessionBootstrap } from "@/components/SessionBootstrap";
 
 export const metadata: Metadata = {
   title: "IncidentIQ. AI Incident Root Cause Analyzer.",
@@ -24,6 +25,7 @@ export default function RootLayout({
       <body className="min-h-screen flex flex-col">
         <ConditionalBackground />
         <ScrollProgress />
+        <SessionBootstrap />
         <NavBar />
         <main className="flex-1 w-full">{children}</main>
         <Footer />
@@ -56,6 +58,12 @@ function NavBar() {
             className="text-ink-200 hover:text-white transition font-medium"
           >
             History
+          </Link>
+          <Link
+            href="/settings"
+            className="text-ink-200 hover:text-white transition font-medium hidden sm:inline"
+          >
+            Settings
           </Link>
           <Link
             href="/dashboard"

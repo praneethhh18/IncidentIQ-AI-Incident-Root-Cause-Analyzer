@@ -17,9 +17,9 @@ import type {
   WatchStatusPayload,
 } from "./types";
 
-export const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
-  "http://localhost:8000";
+export { API_BASE } from "./api-base";
+import { API_BASE } from "./api-base";
+import { getSessionId } from "./session";
 
 export class ApiError extends Error {
   constructor(message: string, public status: number) {
@@ -33,12 +33,18 @@ async function request<T>(
   init: RequestInit & { json?: unknown } = {},
 ): Promise<T> {
   const { json, headers, ...rest } = init;
+  // Attach the per-browser session id so the backend can pick up the
+  // user's pasted Datadog/Grafana/NR credentials. SSR fetches won't
+  // have one (server has no localStorage); they fall back to .env on
+  // the backend side, which is the expected behaviour.
+  const sessionId = getSessionId();
   const response = await fetch(`${API_BASE}${path}`, {
     cache: "no-store",
     ...rest,
     headers: {
       Accept: "application/json",
       ...(json !== undefined ? { "Content-Type": "application/json" } : {}),
+      ...(sessionId ? { "X-IIQ-Session": sessionId } : {}),
       ...headers,
     },
     body: json !== undefined ? JSON.stringify(json) : rest.body,
@@ -83,6 +89,48 @@ export const api = {
 
   watchStop: () =>
     request<WatchStatusPayload>("/api/v1/watch/stop", { method: "POST" }),
+
+  // ── Per-session credentials (Settings page) ──────────────────────
+  sessionStatus: () =>
+    request<{ session_id: string | null; status: { datadog: boolean; grafana: boolean; newrelic: boolean } }>(
+      "/api/v1/session/status",
+    ),
+
+  setDatadogCreds: (body: { api_key: string; app_key: string; site: string }) =>
+    request<{ session_id: string; status: { datadog: boolean; grafana: boolean; newrelic: boolean } }>(
+      "/api/v1/integrations/datadog/credentials",
+      { method: "POST", json: body },
+    ),
+
+  clearDatadogCreds: () =>
+    request<{ session_id: string; status: { datadog: boolean; grafana: boolean; newrelic: boolean } }>(
+      "/api/v1/integrations/datadog/credentials",
+      { method: "DELETE" },
+    ),
+
+  setGrafanaCreds: (body: { url: string; api_key: string }) =>
+    request<{ session_id: string; status: { datadog: boolean; grafana: boolean; newrelic: boolean } }>(
+      "/api/v1/integrations/grafana/credentials",
+      { method: "POST", json: body },
+    ),
+
+  clearGrafanaCreds: () =>
+    request<{ session_id: string; status: { datadog: boolean; grafana: boolean; newrelic: boolean } }>(
+      "/api/v1/integrations/grafana/credentials",
+      { method: "DELETE" },
+    ),
+
+  setNewRelicCreds: (body: { user_key: string; account_id: string }) =>
+    request<{ session_id: string; status: { datadog: boolean; grafana: boolean; newrelic: boolean } }>(
+      "/api/v1/integrations/newrelic/credentials",
+      { method: "POST", json: body },
+    ),
+
+  clearNewRelicCreds: () =>
+    request<{ session_id: string; status: { datadog: boolean; grafana: boolean; newrelic: boolean } }>(
+      "/api/v1/integrations/newrelic/credentials",
+      { method: "DELETE" },
+    ),
 
   samples: () => request<SampleIncident[]>("/api/v1/samples"),
 

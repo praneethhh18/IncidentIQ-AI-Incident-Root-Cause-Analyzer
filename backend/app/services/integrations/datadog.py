@@ -33,17 +33,52 @@ class DatadogIntegration(MonitoringIntegration):
     def is_configured(self) -> bool:
         return self._settings.datadog_enabled
 
+    def _resolve_credentials(
+        self,
+        overrides: Optional["object"] = None,
+    ) -> tuple[Optional[str], Optional[str], str, str]:
+        """Pick credentials for this call.
+
+        Overrides come from the per-session credential store (the user
+        pasted their own keys in the Settings page). When no overrides
+        are supplied we fall back to .env values from settings. Returns
+        ``(api_key, app_key, site, base_url)``.
+        """
+        if overrides is not None:
+            api_key = getattr(overrides, "api_key", None)
+            app_key = getattr(overrides, "app_key", None)
+            site = getattr(overrides, "site", None) or "datadoghq.com"
+            base_url = f"https://api.{site}"
+            return api_key, app_key, site, base_url
+        return (
+            self._settings.datadog_api_key,
+            self._settings.datadog_app_key,
+            self._settings.datadog_site or "datadoghq.com",
+            self._base_url,
+        )
+
+    def is_configured_for(self, overrides: Optional["object"] = None) -> bool:
+        """True if EITHER the per-session overrides or .env have valid creds."""
+        if overrides is not None:
+            return bool(
+                getattr(overrides, "api_key", None)
+                and getattr(overrides, "app_key", None)
+            )
+        return self._settings.datadog_enabled
+
     async def fetch_logs(
         self,
         *,
         query: Optional[str],
         window_minutes: int,
+        overrides: Optional["object"] = None,
     ) -> str:
-        if not self.is_configured():
+        api_key, app_key, site, base_url = self._resolve_credentials(overrides)
+        if not (api_key and app_key):
             logger.info("Datadog not configured — returning seeded log stream")
             return f"# [demo] Datadog stream — query={query or '*'} window={window_minutes}m\n{CASCADING_FAILURE_LOGS}"
 
-        url = f"{self._base_url}/api/v2/logs/events/search"
+        url = f"{base_url}/api/v2/logs/events/search"
         now = datetime.now(timezone.utc)
         body = {
             "filter": {
@@ -55,8 +90,8 @@ class DatadogIntegration(MonitoringIntegration):
             "sort": "-timestamp",
         }
         headers = {
-            "DD-API-KEY": self._settings.datadog_api_key or "",
-            "DD-APPLICATION-KEY": self._settings.datadog_app_key or "",
+            "DD-API-KEY": api_key,
+            "DD-APPLICATION-KEY": app_key,
             "Content-Type": "application/json",
         }
 
@@ -83,7 +118,11 @@ class DatadogIntegration(MonitoringIntegration):
             lines.append(f"{ts} {status.upper():<5} {service:<20} {message}")
         return "\n".join(lines)
 
-    async def list_recent_services(self, window_minutes: int = 60) -> list[str]:
+    async def list_recent_services(
+        self,
+        window_minutes: int = 60,
+        overrides: Optional["object"] = None,
+    ) -> list[str]:
         """Return distinct service names that emitted error/warn logs recently.
 
         Tries the Logs Analytics Aggregate endpoint first (gives us
@@ -92,16 +131,27 @@ class DatadogIntegration(MonitoringIntegration):
         back to a small Search API call and bucket services client-side.
         Returns an empty list only when both fail or no creds.
         """
-        if not self.is_configured():
+        api_key, app_key, site, base_url = self._resolve_credentials(overrides)
+        if not (api_key and app_key):
             return []
 
-        services = await self._list_services_via_aggregate(window_minutes)
+        services = await self._list_services_via_aggregate(
+            window_minutes, api_key, app_key, base_url,
+        )
         if services:
             return services
-        return await self._list_services_via_search(window_minutes)
+        return await self._list_services_via_search(
+            window_minutes, api_key, app_key, base_url,
+        )
 
-    async def _list_services_via_aggregate(self, window_minutes: int) -> list[str]:
-        url = f"{self._base_url}/api/v2/logs/analytics/aggregate"
+    async def _list_services_via_aggregate(
+        self,
+        window_minutes: int,
+        api_key: str,
+        app_key: str,
+        base_url: str,
+    ) -> list[str]:
+        url = f"{base_url}/api/v2/logs/analytics/aggregate"
         # Use Datadog's relative-time strings instead of ISO timestamps.
         # The aggregate endpoint is fussy about timezone formatting and
         # 'now-Xm' is the form their docs and console use.
@@ -121,8 +171,8 @@ class DatadogIntegration(MonitoringIntegration):
             ],
         }
         headers = {
-            "DD-API-KEY": self._settings.datadog_api_key or "",
-            "DD-APPLICATION-KEY": self._settings.datadog_app_key or "",
+            "DD-API-KEY": api_key,
+            "DD-APPLICATION-KEY": app_key,
             "Content-Type": "application/json",
         }
         try:
@@ -148,9 +198,15 @@ class DatadogIntegration(MonitoringIntegration):
                 names.append(svc)
         return names
 
-    async def _list_services_via_search(self, window_minutes: int) -> list[str]:
+    async def _list_services_via_search(
+        self,
+        window_minutes: int,
+        api_key: str,
+        app_key: str,
+        base_url: str,
+    ) -> list[str]:
         """Fallback: pull recent events and bucket by `service` ourselves."""
-        url = f"{self._base_url}/api/v2/logs/events/search"
+        url = f"{base_url}/api/v2/logs/events/search"
         now = datetime.now(timezone.utc)
         body = {
             "filter": {
@@ -162,8 +218,8 @@ class DatadogIntegration(MonitoringIntegration):
             "sort": "-timestamp",
         }
         headers = {
-            "DD-API-KEY": self._settings.datadog_api_key or "",
-            "DD-APPLICATION-KEY": self._settings.datadog_app_key or "",
+            "DD-API-KEY": api_key,
+            "DD-APPLICATION-KEY": app_key,
             "Content-Type": "application/json",
         }
         try:

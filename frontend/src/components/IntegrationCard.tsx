@@ -1,4 +1,5 @@
-import { Check, Plug2, Plus, XCircle } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, Check, Plug2, Plus, XCircle } from "lucide-react";
 import type { IntegrationStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -72,6 +73,14 @@ export function IntegrationCard({ status }: { status: IntegrationStatus }) {
         <div className="mt-1.5 text-[11px] text-ink-500 leading-snug">
           {status.detail}
         </div>
+      ) : null}
+      {!status.connected ? (
+        <Link
+          href="/settings"
+          className="mt-2 inline-flex items-center gap-1 text-[11.5px] font-medium text-brand-300 hover:text-brand-200 transition"
+        >
+          Connect <ArrowRight className="size-3" />
+        </Link>
       ) : null}
     </div>
   );

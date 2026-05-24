@@ -30,10 +30,17 @@ class GrafanaIntegration(MonitoringIntegration):
     def is_configured(self) -> bool:
         return self._settings.grafana_enabled
 
-    @property
-    def _headers(self) -> dict[str, str]:
+    def _resolve(self, overrides: Optional["object"] = None) -> tuple[Optional[str], Optional[str]]:
+        if overrides is not None:
+            return (
+                getattr(overrides, "url", None),
+                getattr(overrides, "api_key", None),
+            )
+        return self._settings.grafana_url, self._settings.grafana_api_key
+
+    def _headers_for(self, api_key: Optional[str]) -> dict[str, str]:
         return {
-            "Authorization": f"Bearer {self._settings.grafana_api_key or ''}",
+            "Authorization": f"Bearer {api_key or ''}",
             "Accept": "application/json",
         }
 
@@ -42,12 +49,11 @@ class GrafanaIntegration(MonitoringIntegration):
         *,
         query: Optional[str],
         window_minutes: int,
+        overrides: Optional["object"] = None,
     ) -> str:
-        if not self.is_configured():
+        url_cfg, api_key = self._resolve(overrides)
+        if not (url_cfg and api_key):
             logger.info("Grafana not configured — returning seeded log stream")
-            # Build the default-query placeholder outside the f-string so
-            # Python 3.11 doesn't complain about backslashes inside an
-            # f-string expression part.
             default_query = '{job=~".+"}'
             display_query = query or default_query
             return (
@@ -55,10 +61,8 @@ class GrafanaIntegration(MonitoringIntegration):
                 f"window={window_minutes}m\n{DB_OUTAGE_LOGS}"
             )
 
-        # Grafana exposes Loki at /api/datasources/proxy/<id>/loki/api/v1/...
-        # We accept the user pointing GRAFANA_URL directly at the Loki API
-        # base for the simplest possible setup.
-        base = (self._settings.grafana_url or "").rstrip("/")
+        base = url_cfg.rstrip("/")
+        headers = self._headers_for(api_key)
         end_ns = int(time.time() * 1e9)
         start_ns = end_ns - int(window_minutes * 60 * 1e9)
         params = {
@@ -71,7 +75,7 @@ class GrafanaIntegration(MonitoringIntegration):
         url = f"{base}/loki/api/v1/query_range"
         try:
             async with httpx.AsyncClient(timeout=15) as client:
-                response = await client.get(url, params=params, headers=self._headers)
+                response = await client.get(url, params=params, headers=headers)
                 response.raise_for_status()
                 payload = response.json()
         except Exception as exc:  # noqa: BLE001
@@ -103,7 +107,8 @@ class GrafanaIntegration(MonitoringIntegration):
         try:
             async with httpx.AsyncClient(timeout=8) as client:
                 response = await client.get(
-                    f"{base}/loki/api/v1/labels", headers=self._headers
+                    f"{base}/loki/api/v1/labels",
+                    headers=self._headers_for(self._settings.grafana_api_key),
                 )
                 if response.status_code == 200:
                     return IntegrationStatus(

@@ -32,13 +32,23 @@ class NewRelicIntegration(MonitoringIntegration):
     def is_configured(self) -> bool:
         return self._settings.newrelic_enabled
 
+    def _resolve(self, overrides: Optional["object"] = None) -> tuple[Optional[str], Optional[str]]:
+        if overrides is not None:
+            return (
+                getattr(overrides, "user_key", None),
+                getattr(overrides, "account_id", None),
+            )
+        return self._settings.new_relic_user_key, self._settings.new_relic_account_id
+
     async def fetch_logs(
         self,
         *,
         query: Optional[str],
         window_minutes: int,
+        overrides: Optional["object"] = None,
     ) -> str:
-        if not self.is_configured():
+        user_key, account_id = self._resolve(overrides)
+        if not (user_key and account_id):
             logger.info("New Relic not configured — returning seeded log stream")
             return f"# [demo] New Relic NRQL stream — query={query or 'default'} window={window_minutes}m\n{MEMORY_LEAK_LOGS}"
 
@@ -59,11 +69,11 @@ class NewRelicIntegration(MonitoringIntegration):
         }
         """
         variables = {
-            "accountId": int(self._settings.new_relic_account_id or 0),
+            "accountId": int(account_id or 0),
             "nrql": nrql,
         }
         headers = {
-            "API-Key": self._settings.new_relic_user_key or "",
+            "API-Key": user_key,
             "Content-Type": "application/json",
         }
 

@@ -135,9 +135,9 @@ export function WatchToggle({
             ) : (
               <>
                 Turn this on and IncidentIQ auto-creates incidents whenever
-                Datadog sees a fresh error cluster on{" "}
-                <span className="text-ink-200">fashion-aura-api</span>. No
-                manual analyze clicks.
+                your connected monitoring stack sees a fresh error cluster.
+                No manual analyze clicks — point it at any service in your
+                Datadog / Grafana / New Relic account.
               </>
             )}
           </div>

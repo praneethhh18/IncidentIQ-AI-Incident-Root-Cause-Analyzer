@@ -50,8 +50,16 @@ export default async function DashboardPage() {
             Analyze an incident
           </h1>
           <p className="mt-2 text-[13.5px] sm:text-base text-ink-300 max-w-2xl">
-            Paste logs, upload a file, or pull straight from a connected
-            monitoring tool. The agent returns a structured analysis in seconds.
+            Paste logs, upload a file, or pull straight from your connected
+            monitoring stack. The agent returns a structured root-cause
+            analysis in seconds — for whatever team / service / repo you
+            point it at.{" "}
+            <Link
+              href="/settings"
+              className="text-brand-300 hover:text-brand-200 underline decoration-brand-500/30 underline-offset-2"
+            >
+              Connect your stack →
+            </Link>
           </p>
         </div>
 

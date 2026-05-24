@@ -373,7 +373,7 @@ export function AnalyzePanel({
               </label>
               <input
                 className="input"
-                placeholder="e.g. checkout-api"
+                placeholder="e.g. your-api-service"
                 value={serviceHint}
                 onChange={(e) => setServiceHint(e.target.value)}
               />

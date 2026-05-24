@@ -51,7 +51,10 @@ class Analyzer:
         self._agent = agent or IncidentAgent()
 
     async def analyze_stream(
-        self, request: AnalyzeRequest, step_delay: float = 0.18
+        self,
+        request: AnalyzeRequest,
+        step_delay: float = 0.18,
+        credential_overrides: Optional[object] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """Same flow as ``analyze()``, but yields incremental events.
 
@@ -65,7 +68,7 @@ class Analyzer:
         yield {"event": "phase", "phase": "perceive", "message": "Resolving telemetry source…"}
 
         try:
-            logs = await self._resolve_logs(request)
+            logs = await self._resolve_logs(request, credential_overrides)
         except Exception as exc:  # noqa: BLE001
             yield {"event": "error", "message": f"Failed to resolve logs: {exc}"}
             return
@@ -149,10 +152,14 @@ class Analyzer:
             "analysis": result.model_dump(mode="json"),
         }
 
-    async def analyze(self, request: AnalyzeRequest) -> AnalyzeResponse:
+    async def analyze(
+        self,
+        request: AnalyzeRequest,
+        credential_overrides: Optional[object] = None,
+    ) -> AnalyzeResponse:
         started = time.perf_counter()
 
-        logs = await self._resolve_logs(request)
+        logs = await self._resolve_logs(request, credential_overrides)
         if not logs:
             raise ValueError(
                 "No logs provided. Either paste/upload a log payload, or "
@@ -206,8 +213,18 @@ class Analyzer:
 
     # ── Source resolution ──────────────────────────────────────────────
 
-    async def _resolve_logs(self, request: AnalyzeRequest) -> Optional[str]:
-        """Return the raw text to analyse, pulling from integrations as needed."""
+    async def _resolve_logs(
+        self,
+        request: AnalyzeRequest,
+        credential_overrides: Optional[object] = None,
+    ) -> Optional[str]:
+        """Return the raw text to analyse, pulling from integrations as needed.
+
+        ``credential_overrides`` is the per-session credential dataclass
+        (DatadogCreds / GrafanaCreds / NewRelicCreds). When supplied, the
+        integration uses those keys instead of the .env defaults so each
+        browser session can hit its own monitoring account.
+        """
         if request.logs:
             return request.logs
 
@@ -219,9 +236,12 @@ class Analyzer:
             logger.warning("No integration registered for source=%s", request.source)
             return None
 
-        return await integration.fetch_logs(
+        # Pass per-session credential overrides when present; integrations
+        # accept None and fall back to their .env-baked defaults.
+        return await integration.fetch_logs(  # type: ignore[call-arg]
             query=request.integration_query,
             window_minutes=request.time_window_minutes,
+            overrides=credential_overrides,
         )
 
     # ── Inference + fallback ───────────────────────────────────────────

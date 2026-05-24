@@ -1,8 +1,8 @@
 # IncidentIQ
 
-AI-powered root-cause analysis for production incidents. Connects to your monitoring stack (Datadog, Grafana, New Relic), reads error logs in real time, and uses an agentic AWS Bedrock pipeline to produce a structured root-cause analysis, propose code-level fixes against your GitHub repo, and auto-detect new incidents while you're not watching.
+AI-powered root-cause analysis for SRE teams. **Plug in any team's monitoring stack** (Datadog, Grafana / Loki, New Relic), point it at any service, connect any GitHub repo. IncidentIQ reads the error logs in real time, runs an agentic AWS Bedrock pipeline, and produces a structured root-cause analysis, a real `git apply`-ready code patch against your repo, and auto-detects new incidents while you're not watching.
 
-Live demo: **https://incidentiq.nexusagent.in**
+Live demo: **https://incidentiq.nexusagent.in** — click **Settings**, paste your own Datadog (or Grafana / NR) keys, and IncidentIQ instantly analyses *your* stack. No shared credentials, no .env edits, no redeploy.
 
 ## What it actually does
 
