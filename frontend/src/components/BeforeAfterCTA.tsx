@@ -104,7 +104,7 @@ export function BeforeAfterCTA() {
     <section className="mx-auto max-w-6xl px-6 py-24">
       <div className="text-center max-w-2xl mx-auto">
         <h3 className="text-3xl md:text-4xl font-semibold tracking-tight text-ink-50">
-          What took 2 hours now takes 10 seconds.
+          Stop reading logs. Read the answer.
         </h3>
         <p className="mt-3 text-ink-400">
           Stop scrolling logs at 3am. Let the agent tell you what broke, why,

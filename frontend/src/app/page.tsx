@@ -48,7 +48,7 @@ function Hero() {
           transition={{ duration: 0.5, ease: EASE, delay: 0.18 }}
           className="mt-6 max-w-2xl mx-auto text-ink-400 text-lg leading-relaxed"
         >
-          IncidentIQ reads your logs, traces the cascade back to patient zero, and writes the post mortem before your second coffee. Under 10 seconds.
+          IncidentIQ reads your logs, traces the cascade back to patient zero, and writes the post mortem while you're still reading the alert.
         </motion.p>
 
         <motion.div
