@@ -29,6 +29,11 @@ from app.models import AnalyzeResponse, IncidentSummary
 logger = logging.getLogger(__name__)
 
 
+# Table + non-user-related indexes only - the user_id index has to wait
+# until AFTER the ALTER TABLE migration runs, because on databases that
+# pre-date the per-user work the column doesn't exist yet and
+# `CREATE INDEX ... ON incidents(user_id, ...)` would crash with
+# "no such column: user_id".
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS incidents (
     incident_id TEXT PRIMARY KEY,
@@ -38,6 +43,11 @@ CREATE TABLE IF NOT EXISTS incidents (
 );
 CREATE INDEX IF NOT EXISTS incidents_created_at_idx
     ON incidents(created_at DESC);
+"""
+
+# Index that requires user_id - created separately, after the ALTER
+# migration guarantees the column exists.
+_USER_INDEX = """
 CREATE INDEX IF NOT EXISTS incidents_user_idx
     ON incidents(user_id, created_at DESC);
 """
@@ -70,13 +80,18 @@ class AnalysisStore:
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._conn.executescript(_SCHEMA)
         # Non-destructive migration: pre-user_id databases need the
-        # column added. SQLite raises if the column already exists,
-        # which we swallow because that's the expected steady state.
+        # column added before the user_id index can be created. SQLite
+        # raises 'duplicate column' if the column already exists, which
+        # we swallow because that's the expected steady state.
         try:
             self._conn.execute("ALTER TABLE incidents ADD COLUMN user_id TEXT")
             logger.info("Migrated incidents table: added user_id column")
         except sqlite3.OperationalError:
             pass  # column already there
+        # Index that depends on user_id - safe to create now that the
+        # column is guaranteed to exist on both fresh DBs (added by
+        # _SCHEMA's CREATE TABLE) and migrated DBs (added by the ALTER).
+        self._conn.executescript(_USER_INDEX)
 
         logger.info("AnalysisStore using SQLite at %s", self._db_path)
 
