@@ -1,66 +1,55 @@
 /**
- * Per-browser session id management.
+ * Deprecated shim. Use lib/auth.ts directly going forward.
  *
- * On first page load we ask the backend for a session id and stash it
- * in localStorage. Every subsequent API request (in api.ts) sends it
- * back as ``X-IIQ-Session: <uuid>``. The backend looks the id up in an
- * in-memory dict to find any monitoring credentials the user pasted
- * via the Settings page.
- *
- * This is intentionally NOT auth: it's a lightweight per-browser
- * credential bucket that lets the public IncidentIQ deployment serve
- * multiple visitors without any of them touching the server's .env.
- * Sessions TTL out after 24h server-side.
+ * Kept temporarily so existing callers (SessionChip, Settings page,
+ * SessionBootstrap) don't break while we migrate the codebase from
+ * the old per-session-credential model to the unified user identity
+ * model in lib/auth.ts.
  */
 
-import { API_BASE } from "./api-base";
+import {
+  clearUser,
+  getUserId,
+  setUser,
+  signInAsGuest,
+} from "./auth";
 
-const STORAGE_KEY = "iiq.session_id";
-
-let cachedSessionId: string | null = null;
-
+/** @deprecated use getUserId() from lib/auth.ts */
 export function getSessionId(): string | null {
-  if (typeof window === "undefined") return null;
-  if (cachedSessionId) return cachedSessionId;
-  cachedSessionId = window.localStorage.getItem(STORAGE_KEY);
-  return cachedSessionId;
+  return getUserId();
 }
 
+/** @deprecated use setUser() from lib/auth.ts with a full profile */
 export function setSessionId(id: string): void {
-  if (typeof window === "undefined") return;
-  cachedSessionId = id;
-  window.localStorage.setItem(STORAGE_KEY, id);
+  // Best-effort: infer kind from prefix; default to guest for legacy values.
+  if (id.startsWith("gh:")) {
+    setUser({ id, kind: "github", displayName: id.slice(3) });
+  } else if (id.startsWith("fb:")) {
+    setUser({ id, kind: "firebase" });
+  } else if (id.startsWith("guest:")) {
+    setUser({ id, kind: "guest", displayName: "Guest" });
+  } else {
+    setUser({ id: `guest:${id}`, kind: "guest", displayName: "Guest" });
+  }
 }
 
+/** @deprecated use signOut() from lib/auth.ts */
 export function clearSessionId(): void {
-  if (typeof window === "undefined") return;
-  cachedSessionId = null;
-  window.localStorage.removeItem(STORAGE_KEY);
+  clearUser();
 }
 
 /**
- * Idempotent: ensures we have a session id. Either returns the cached
- * one (touching its server-side last_seen) or asks the backend for a
- * fresh one. Safe to call from a useEffect; safe to call repeatedly.
+ * @deprecated callers should redirect to /sign-in for unauthenticated
+ * users instead of silently minting a guest session. Kept for the
+ * Settings page bootstrap during transition.
  */
 export async function ensureSessionId(): Promise<string | null> {
-  if (typeof window === "undefined") return null;
-  const existing = getSessionId();
-  const headers: Record<string, string> = {};
-  if (existing) headers["X-IIQ-Session"] = existing;
+  const existing = getUserId();
+  if (existing) return existing;
   try {
-    const res = await fetch(`${API_BASE}/api/v1/session/new`, {
-      method: "POST",
-      headers,
-    });
-    if (!res.ok) return existing;
-    const body = (await res.json()) as { session_id?: string };
-    if (body.session_id) {
-      setSessionId(body.session_id);
-      return body.session_id;
-    }
+    const profile = await signInAsGuest();
+    return profile.id;
   } catch {
-    /* offline / CORS / blocked — fall through to whatever we had */
+    return null;
   }
-  return existing;
 }

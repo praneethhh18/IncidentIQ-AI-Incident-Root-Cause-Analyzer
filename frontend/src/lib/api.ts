@@ -19,7 +19,7 @@ import type {
 
 export { API_BASE } from "./api-base";
 import { API_BASE } from "./api-base";
-import { getSessionId } from "./session";
+import { getUserId } from "./auth";
 
 export class ApiError extends Error {
   constructor(message: string, public status: number) {
@@ -33,18 +33,22 @@ async function request<T>(
   init: RequestInit & { json?: unknown } = {},
 ): Promise<T> {
   const { json, headers, ...rest } = init;
-  // Attach the per-browser session id so the backend can pick up the
-  // user's pasted Datadog/Grafana/NR credentials. SSR fetches won't
-  // have one (server has no localStorage); they fall back to .env on
-  // the backend side, which is the expected behaviour.
-  const sessionId = getSessionId();
+  // Attach the per-browser user identity so the backend scopes
+  // incidents, credentials, watch mode etc. to this user. SSR fetches
+  // run server-side with no localStorage; they hit the public/shared
+  // bucket only, which is the expected behaviour for unauthenticated
+  // page-render fetches like /health and /integrations.
+  const userId = getUserId();
   const response = await fetch(`${API_BASE}${path}`, {
     cache: "no-store",
     ...rest,
     headers: {
       Accept: "application/json",
       ...(json !== undefined ? { "Content-Type": "application/json" } : {}),
-      ...(sessionId ? { "X-IIQ-Session": sessionId } : {}),
+      // X-IIQ-User is the new canonical header. X-IIQ-Session is also
+      // sent for one release of backwards compat with the per-session
+      // credential store endpoints.
+      ...(userId ? { "X-IIQ-User": userId, "X-IIQ-Session": userId } : {}),
       ...headers,
     },
     body: json !== undefined ? JSON.stringify(json) : rest.body,

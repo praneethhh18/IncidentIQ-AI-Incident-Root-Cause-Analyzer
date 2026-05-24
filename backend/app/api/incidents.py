@@ -10,12 +10,14 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app.api.deps import (
+    current_user,
     get_analysis_store,
     get_integrations,
 )
 from app.core.config import get_settings
 from app.models import AnalyzeResponse, IncidentSummary
 from app.services.email import EmailNotifier
+from app.services.identity import UserIdentity
 from app.services.integrations import IntegrationRegistry
 from app.services.recheck import recheck_incident
 from app.services.store import AnalysisStore
@@ -41,16 +43,18 @@ class RecheckResponse(BaseModel):
 def list_incidents(
     limit: int = Query(default=25, ge=1, le=100),
     store: AnalysisStore = Depends(get_analysis_store),
+    user: Optional[UserIdentity] = Depends(current_user),
 ) -> List[IncidentSummary]:
-    return store.list_recent(limit=limit)
+    return store.list_recent(limit=limit, user_id=user.id if user else None)
 
 
 @router.get("/incidents/{incident_id}", response_model=AnalyzeResponse)
 def get_incident(
     incident_id: str,
     store: AnalysisStore = Depends(get_analysis_store),
+    user: Optional[UserIdentity] = Depends(current_user),
 ) -> AnalyzeResponse:
-    analysis = store.get(incident_id)
+    analysis = store.get(incident_id, user_id=user.id if user else None)
     if analysis is None:
         raise HTTPException(status_code=404, detail="Incident not found")
     return analysis
@@ -62,6 +66,7 @@ async def recheck(
     body: RecheckRequest = Body(default_factory=RecheckRequest),
     store: AnalysisStore = Depends(get_analysis_store),
     integrations: IntegrationRegistry = Depends(get_integrations),
+    user: Optional[UserIdentity] = Depends(current_user),
 ) -> RecheckResponse:
     """Re-evaluate an incident against fresh telemetry.
 
@@ -70,7 +75,8 @@ async def recheck(
     Updates the incident's lifecycle status. Fires a resolution email
     when the incident transitions to resolved for the first time.
     """
-    analysis = store.get(incident_id)
+    owner_id = user.id if user else None
+    analysis = store.get(incident_id, user_id=owner_id)
     if analysis is None:
         raise HTTPException(status_code=404, detail="Incident not found")
 
@@ -88,7 +94,7 @@ async def recheck(
         logger.exception("Recheck failed")
         raise HTTPException(status_code=500, detail="Recheck failed") from exc
 
-    store.save(analysis)
+    store.save(analysis, user_id=owner_id)
 
     # Fire resolution email exactly once: only when this recheck flipped
     # the status into 'resolved'.

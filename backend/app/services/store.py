@@ -1,22 +1,22 @@
-"""Incident store backed by SQLite (with an in-memory fast path).
+"""Incident store backed by SQLite, scoped by user identity.
 
-Default behaviour: persist to ``store_db_path`` from settings (which on
-EC2 resolves to ``/var/lib/incidentiq/store.db`` thanks to systemd's
-``StateDirectory=incidentiq``). Local dev gets ``./store.db`` next to
-the working directory.
+Every row carries a ``user_id`` (gh:/fb:/guest: prefixed). Reads filter
+by user_id so two judges on different devices never see each other's
+incidents. Webhook-ingested incidents land in the shared pool with
+``user_id = NULL`` so external alerts (PagerDuty, Datadog monitors)
+remain visible regardless of who's signed in.
 
-A single ``incidents`` table holds the full Pydantic payload as JSON in
-one column - simple, schema-less, easy to evolve. Reads via a small
-LRU cache so the chat / detail page doesn't re-deserialise the same
-incident repeatedly.
+Schema migration: an older deployment may have an ``incidents`` table
+without ``user_id``. The migration adds the column non-destructively
+(NULL default) so existing rows become "shared pool" without losing
+history.
 
-The interface (save / get / list_recent / clear) is unchanged from the
-in-memory version, so callers don't notice the swap.
+Default path: ``store_db_path`` from settings - production EC2 resolves
+to ``/var/lib/incidentiq/store.db`` via systemd StateDirectory.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import sqlite3
 import threading
@@ -33,55 +33,72 @@ _SCHEMA = """
 CREATE TABLE IF NOT EXISTS incidents (
     incident_id TEXT PRIMARY KEY,
     created_at  TEXT NOT NULL,
-    payload     TEXT NOT NULL
+    payload     TEXT NOT NULL,
+    user_id     TEXT
 );
 CREATE INDEX IF NOT EXISTS incidents_created_at_idx
     ON incidents(created_at DESC);
+CREATE INDEX IF NOT EXISTS incidents_user_idx
+    ON incidents(user_id, created_at DESC);
 """
 
 
+# Sentinel for the shared / public bucket: webhook ingests, demo
+# fallbacks, etc. Visible to every signed-in user *and* anonymous
+# callers, so external alert sources don't have to know about identity.
+SHARED_USER_ID: Optional[str] = None
+
+
 class AnalysisStore:
-    """SQLite-backed analysis store.
+    """SQLite-backed analysis store, with per-user scoping."""
 
-    Connection is opened with ``check_same_thread=False`` and guarded by
-    an explicit lock so multiple uvicorn workers (or async tasks) can
-    share the same store instance safely. WAL mode keeps writers from
-    blocking readers, which matters during long-running analyses.
-    """
-
-    def __init__(self, db_path: Optional[str] = None, capacity: int = 1000) -> None:
+    def __init__(self, db_path: Optional[str] = None, capacity: int = 2000) -> None:
         self._capacity = capacity
         self._lock = threading.Lock()
         self._db_path = db_path or get_settings().store_db_path
 
-        # ``:memory:`` is fine for tests; for a file path, ensure the
-        # parent directory exists so we don't crash on first start.
         if self._db_path != ":memory:":
             Path(self._db_path).parent.mkdir(parents=True, exist_ok=True)
 
         self._conn = sqlite3.connect(
             self._db_path,
             check_same_thread=False,
-            isolation_level=None,  # autocommit; we batch where it matters
+            isolation_level=None,
         )
-        # WAL: readers don't block on writers (matters under load).
-        # synchronous=NORMAL is the recommended pairing for WAL.
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._conn.executescript(_SCHEMA)
+        # Non-destructive migration: pre-user_id databases need the
+        # column added. SQLite raises if the column already exists,
+        # which we swallow because that's the expected steady state.
+        try:
+            self._conn.execute("ALTER TABLE incidents ADD COLUMN user_id TEXT")
+            logger.info("Migrated incidents table: added user_id column")
+        except sqlite3.OperationalError:
+            pass  # column already there
+
         logger.info("AnalysisStore using SQLite at %s", self._db_path)
 
     # ── Mutation ─────────────────────────────────────────────────────
 
-    def save(self, analysis: AnalyzeResponse) -> None:
+    def save(
+        self, analysis: AnalyzeResponse, *, user_id: Optional[str] = None,
+    ) -> None:
+        """Persist an analysis under the given user_id.
+
+        ``user_id=None`` means the shared/public bucket - used by the
+        webhook ingest path so PagerDuty/Datadog monitors don't need
+        to know about IncidentIQ's identity scheme.
+        """
         payload = analysis.model_dump_json()
         created_at_iso = analysis.created_at.isoformat()
         with self._lock:
             self._conn.execute(
-                "INSERT OR REPLACE INTO incidents (incident_id, created_at, payload) "
-                "VALUES (?, ?, ?)",
-                (analysis.incident_id, created_at_iso, payload),
+                "INSERT OR REPLACE INTO incidents "
+                "(incident_id, created_at, payload, user_id) "
+                "VALUES (?, ?, ?, ?)",
+                (analysis.incident_id, created_at_iso, payload, user_id),
             )
             # LRU-style cap so the table doesn't grow unbounded over time.
             self._conn.execute(
@@ -91,33 +108,80 @@ class AnalysisStore:
                 (self._capacity,),
             )
 
-    def clear(self) -> None:
+    def clear(self, *, user_id: Optional[str] = None) -> None:
+        """Clear incidents. With user_id, scoped to that user; without,
+        clears the entire store (admin use only - not exposed via API)."""
         with self._lock:
-            self._conn.execute("DELETE FROM incidents")
+            if user_id is None:
+                self._conn.execute("DELETE FROM incidents")
+            else:
+                self._conn.execute(
+                    "DELETE FROM incidents WHERE user_id = ?", (user_id,),
+                )
 
     # ── Reads ────────────────────────────────────────────────────────
 
-    def get(self, incident_id: str) -> Optional[AnalyzeResponse]:
+    def get(
+        self, incident_id: str, *, user_id: Optional[str] = None,
+    ) -> Optional[AnalyzeResponse]:
+        """Fetch a single incident.
+
+        If ``user_id`` is supplied, only returns the row when it belongs
+        to that user OR to the shared pool (user_id IS NULL). Without
+        user_id, returns the row regardless of owner (used internally
+        for cross-user operations like webhook follow-ups).
+        """
         with self._lock:
-            row = self._conn.execute(
-                "SELECT payload FROM incidents WHERE incident_id = ?",
-                (incident_id,),
-            ).fetchone()
+            if user_id is not None:
+                row = self._conn.execute(
+                    "SELECT payload FROM incidents "
+                    "WHERE incident_id = ? AND (user_id = ? OR user_id IS NULL)",
+                    (incident_id, user_id),
+                ).fetchone()
+            else:
+                row = self._conn.execute(
+                    "SELECT payload FROM incidents WHERE incident_id = ?",
+                    (incident_id,),
+                ).fetchone()
         if row is None:
             return None
         return AnalyzeResponse.model_validate_json(row[0])
 
-    def list_recent(self, limit: int = 25) -> List[IncidentSummary]:
+    def list_recent(
+        self,
+        limit: int = 25,
+        *,
+        user_id: Optional[str] = None,
+    ) -> List[IncidentSummary]:
+        """Recent incidents visible to the given user.
+
+        Always includes the shared/public bucket (user_id IS NULL).
+        When ``user_id`` is None, returns only the shared pool - this
+        is the safe default for unauthenticated requests so no signed-in
+        user's private incidents leak.
+        """
+        capped_limit = max(1, min(limit, self._capacity))
         with self._lock:
-            rows = self._conn.execute(
-                "SELECT payload FROM incidents ORDER BY created_at DESC LIMIT ?",
-                (max(1, min(limit, self._capacity)),),
-            ).fetchall()
+            if user_id is None:
+                rows = self._conn.execute(
+                    "SELECT payload FROM incidents "
+                    "WHERE user_id IS NULL "
+                    "ORDER BY created_at DESC LIMIT ?",
+                    (capped_limit,),
+                ).fetchall()
+            else:
+                rows = self._conn.execute(
+                    "SELECT payload FROM incidents "
+                    "WHERE user_id = ? OR user_id IS NULL "
+                    "ORDER BY created_at DESC LIMIT ?",
+                    (user_id, capped_limit),
+                ).fetchall()
+
         summaries: List[IncidentSummary] = []
         for (payload_json,) in rows:
             try:
                 analysis = AnalyzeResponse.model_validate_json(payload_json)
-            except Exception:  # noqa: BLE001 - skip a single bad row, don't crash
+            except Exception:  # noqa: BLE001
                 logger.exception("Skipping malformed incident row during list_recent")
                 continue
             summaries.append(

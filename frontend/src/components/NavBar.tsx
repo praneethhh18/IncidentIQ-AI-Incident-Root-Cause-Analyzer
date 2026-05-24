@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/utils";
+import { UserMenu } from "./UserMenu";
 
 /**
  * Top nav for IncidentIQ. Renders the brand mark on the left and a
@@ -70,6 +71,7 @@ export function NavBar() {
           >
             Analyze
           </Link>
+          <UserMenu />
         </nav>
       </div>
     </header>

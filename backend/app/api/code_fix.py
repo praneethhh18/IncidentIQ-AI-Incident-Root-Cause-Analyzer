@@ -12,11 +12,17 @@ from typing import Optional
 from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from app.api.deps import get_analysis_store, get_bedrock, get_github_auth
+from app.api.deps import (
+    current_user,
+    get_analysis_store,
+    get_bedrock,
+    get_github_auth,
+)
 from app.models import AnalyzeResponse
 from app.services.bedrock import BedrockClient, BedrockUnavailable
 from app.services.code_fix import CodeFixError, generate_code_fix
 from app.services.github_auth import GitHubAuthService
+from app.services.identity import UserIdentity
 from app.services.store import AnalysisStore
 
 logger = logging.getLogger(__name__)
@@ -37,8 +43,10 @@ def code_fix(
     store: AnalysisStore = Depends(get_analysis_store),
     bedrock: BedrockClient = Depends(get_bedrock),
     github: GitHubAuthService = Depends(get_github_auth),
+    user: Optional[UserIdentity] = Depends(current_user),
 ) -> AnalyzeResponse:
-    analysis = store.get(incident_id)
+    owner_id = user.id if user else None
+    analysis = store.get(incident_id, user_id=owner_id)
     if analysis is None:
         raise HTTPException(status_code=404, detail="Incident not found")
 
@@ -62,5 +70,5 @@ def code_fix(
     # human-readable form.
     fix.repo_url = raw_repo_url
     analysis.code_fix = fix
-    store.save(analysis)
+    store.save(analysis, user_id=owner_id)
     return analysis

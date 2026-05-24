@@ -8,10 +8,13 @@ from typing import List
 from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from app.api.deps import get_analysis_store, get_bedrock
+from typing import Optional
+
+from app.api.deps import current_user, get_analysis_store, get_bedrock
 from app.models import ChatMessage
 from app.services.bedrock import BedrockClient
 from app.services.chat import run_chat_turn
+from app.services.identity import UserIdentity
 from app.services.store import AnalysisStore
 
 logger = logging.getLogger(__name__)
@@ -33,8 +36,10 @@ def chat(
     body: ChatRequest = Body(...),
     store: AnalysisStore = Depends(get_analysis_store),
     bedrock: BedrockClient = Depends(get_bedrock),
+    user: Optional[UserIdentity] = Depends(current_user),
 ) -> ChatResponse:
-    analysis = store.get(incident_id)
+    owner_id = user.id if user else None
+    analysis = store.get(incident_id, user_id=owner_id)
     if analysis is None:
         raise HTTPException(status_code=404, detail="Incident not found")
 
@@ -48,7 +53,7 @@ def chat(
         logger.exception("Chat turn failed")
         raise HTTPException(status_code=500, detail=f"Chat failed: {exc}") from exc
 
-    store.save(analysis)
+    store.save(analysis, user_id=owner_id)
     return ChatResponse(reply=reply, history=analysis.chat_history)
 
 
@@ -56,8 +61,9 @@ def chat(
 def get_chat_history(
     incident_id: str,
     store: AnalysisStore = Depends(get_analysis_store),
+    user: Optional[UserIdentity] = Depends(current_user),
 ) -> List[ChatMessage]:
-    analysis = store.get(incident_id)
+    analysis = store.get(incident_id, user_id=user.id if user else None)
     if analysis is None:
         raise HTTPException(status_code=404, detail="Incident not found")
     return analysis.chat_history

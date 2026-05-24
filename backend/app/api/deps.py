@@ -12,6 +12,7 @@ from app.core.config import get_settings
 from app.services.analyzer import Analyzer
 from app.services.bedrock import BedrockClient
 from app.services.github_auth import GitHubAuthService, get_github_auth_service
+from app.services.identity import UserIdentity, parse_user_id
 from app.services.integrations import IntegrationRegistry
 from app.services.session_creds import (
     SessionCredentialStore,
@@ -64,13 +65,27 @@ def get_session_store() -> SessionCredentialStore:
 
 def session_id_header(
     x_iiq_session: Optional[str] = Header(default=None, alias="X-IIQ-Session"),
+    x_iiq_user: Optional[str] = Header(default=None, alias="X-IIQ-User"),
 ) -> Optional[str]:
-    """Pulls the X-IIQ-Session header out of the incoming request.
+    """Pulls the user / session identifier out of the incoming request.
 
-    Returns None when the header is missing - callers fall back to
-    ``.env``-based credentials in that case (e.g. server-to-server
-    webhooks, the live FashionAura reporter, the watch-mode background
-    task). Endpoints that need to enforce a session create one via
-    SessionCredentialStore.get_or_create(session_id).
+    The new auth model uses ``X-IIQ-User`` (prefixed: gh:/fb:/guest:).
+    For backwards compatibility with code paths that still send the
+    older ``X-IIQ-Session`` header, we accept either. New code should
+    depend on ``current_user`` instead and get a typed UserIdentity.
     """
-    return (x_iiq_session or "").strip() or None
+    raw = x_iiq_user or x_iiq_session
+    return (raw or "").strip() or None
+
+
+def current_user(
+    x_iiq_user: Optional[str] = Header(default=None, alias="X-IIQ-User"),
+) -> Optional[UserIdentity]:
+    """Resolve the request's user identity, or None for anonymous.
+
+    Anonymous means no header at all - acceptable for server-to-server
+    flows like the webhook ingest path, but the dashboard always
+    attaches a header. Routes that require a real user should treat
+    ``None`` as a 401.
+    """
+    return parse_user_id(x_iiq_user)

@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from app.api import (
     analyze,
+    auth,
     chat,
     code_fix,
     deep_trace,
@@ -18,6 +19,7 @@ from app.api import (
 
 router = APIRouter()
 router.include_router(analyze.router, prefix="/api/v1", tags=["analyze"])
+router.include_router(auth.router, prefix="/api/v1", tags=["auth"])
 router.include_router(chat.router, prefix="/api/v1", tags=["chat"])
 router.include_router(code_fix.router, prefix="/api/v1", tags=["code-fix"])
 router.include_router(deep_trace.router, prefix="/api/v1", tags=["deep-trace"])

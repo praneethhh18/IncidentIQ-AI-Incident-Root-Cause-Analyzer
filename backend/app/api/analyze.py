@@ -12,6 +12,7 @@ from typing import Optional
 from typing import Optional
 
 from app.api.deps import (
+    current_user,
     get_analyzer,
     get_analysis_store,
     get_session_store,
@@ -20,6 +21,7 @@ from app.api.deps import (
 from app.models import AnalyzeRequest, AnalyzeResponse, SourceKind
 from app.services.analyzer import Analyzer
 from app.services.bedrock import BedrockUnavailable
+from app.services.identity import UserIdentity
 from app.services.session_creds import SessionCredentialStore
 from app.services.store import AnalysisStore
 
@@ -51,6 +53,7 @@ async def analyze(
     store: AnalysisStore = Depends(get_analysis_store),
     session_store: SessionCredentialStore = Depends(get_session_store),
     session_id: Optional[str] = Depends(session_id_header),
+    user: Optional[UserIdentity] = Depends(current_user),
 ) -> AnalyzeResponse:
     """Run a root-cause analysis on the supplied logs or integration query."""
     overrides = _pick_overrides(request.source, session_store, session_id)
@@ -66,7 +69,7 @@ async def analyze(
         logger.exception("Analyzer failed")
         raise HTTPException(status_code=500, detail="Internal analyzer error") from exc
 
-    store.save(result)
+    store.save(result, user_id=user.id if user else None)
     return result
 
 
@@ -77,8 +80,10 @@ async def analyze_stream(
     store: AnalysisStore = Depends(get_analysis_store),
     session_store: SessionCredentialStore = Depends(get_session_store),
     session_id: Optional[str] = Depends(session_id_header),
+    user: Optional[UserIdentity] = Depends(current_user),
 ) -> EventSourceResponse:
     overrides = _pick_overrides(request.source, session_store, session_id)
+    owner_user_id = user.id if user else None
     """SSE variant of ``/analyze`` that streams the agent's reasoning live.
 
     The client opens an EventSource on this endpoint and receives a
@@ -111,7 +116,10 @@ async def analyze_stream(
         # Persist outside the stream so the history endpoint sees it.
         if final_payload is not None:
             try:
-                store.save(AnalyzeResponse.model_validate(final_payload))
+                store.save(
+                    AnalyzeResponse.model_validate(final_payload),
+                    user_id=owner_user_id,
+                )
             except Exception:  # noqa: BLE001
                 logger.exception("Failed to persist streamed analysis")
 
@@ -125,6 +133,7 @@ async def analyze_upload(
     service_hint: Optional[str] = Form(default=None),
     analyzer: Analyzer = Depends(get_analyzer),
     store: AnalysisStore = Depends(get_analysis_store),
+    user: Optional[UserIdentity] = Depends(current_user),
 ) -> AnalyzeResponse:
     """Run analysis on the contents of an uploaded log file."""
     raw = await file.read()
@@ -140,5 +149,5 @@ async def analyze_upload(
         logs=logs,
     )
     result = await analyzer.analyze(request)
-    store.save(result)
+    store.save(result, user_id=user.id if user else None)
     return result

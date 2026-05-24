@@ -61,16 +61,23 @@ async def github_callback(
         )
 
     try:
-        await auth.exchange_code(code)
+        session = await auth.exchange_code(code)
     except Exception as exc:  # noqa: BLE001
         logger.exception("GitHub code exchange failed")
         raise HTTPException(
             status_code=502, detail=f"GitHub code exchange failed: {exc}"
         ) from exc
 
+    # Promote the GitHub login into a sign-in event. The redirect fragment
+    # tells the frontend bootstrap to (a) flip from guest -> gh:<login>
+    # if the user was browsing as a guest, and (b) refresh the user chip
+    # in the header. Frontend reads gh_login from the fragment instead
+    # of round-tripping through another /auth/me call.
     target = get_settings().github_oauth_post_login_redirect
-    # Add a fragment so the dashboard knows where to refresh status.
-    return RedirectResponse(url=f"{target}#github=connected", status_code=302)
+    return RedirectResponse(
+        url=f"{target}#github=connected&login={session.login}",
+        status_code=302,
+    )
 
 
 @router.get("/auth/github/me")

@@ -16,10 +16,11 @@ from typing import Optional
 from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel
 
-from app.api.deps import get_analysis_store, get_bedrock
+from app.api.deps import current_user, get_analysis_store, get_bedrock
 from app.models import AnalyzeResponse
 from app.services.bedrock import BedrockClient
 from app.services.deep_trace import run_deep_trace, should_escalate
+from app.services.identity import UserIdentity
 from app.services.store import AnalysisStore
 
 logger = logging.getLogger(__name__)
@@ -37,8 +38,10 @@ def deep_trace(
     body: DeepTraceRequest = Body(default_factory=DeepTraceRequest),
     store: AnalysisStore = Depends(get_analysis_store),
     bedrock: BedrockClient = Depends(get_bedrock),
+    user: Optional[UserIdentity] = Depends(current_user),
 ) -> AnalyzeResponse:
-    analysis = store.get(incident_id)
+    owner_id = user.id if user else None
+    analysis = store.get(incident_id, user_id=owner_id)
     if analysis is None:
         raise HTTPException(status_code=404, detail="Incident not found")
 
@@ -76,7 +79,7 @@ def deep_trace(
         analysis.confidence = report.revised_confidence
 
     analysis.deep_trace = report
-    store.save(analysis)
+    store.save(analysis, user_id=owner_id)
     return analysis
 
 
@@ -84,9 +87,10 @@ def deep_trace(
 def check_escalation(
     incident_id: str,
     store: AnalysisStore = Depends(get_analysis_store),
+    user: Optional[UserIdentity] = Depends(current_user),
 ) -> dict:
     """UI helper — does this incident warrant a Deep Trace?"""
-    analysis = store.get(incident_id)
+    analysis = store.get(incident_id, user_id=user.id if user else None)
     if analysis is None:
         raise HTTPException(status_code=404, detail="Incident not found")
 

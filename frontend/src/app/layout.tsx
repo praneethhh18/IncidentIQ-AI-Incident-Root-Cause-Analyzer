@@ -3,10 +3,10 @@ import "./globals.css";
 import type { Metadata } from "next";
 import { Github } from "lucide-react";
 
+import { AuthBootstrap } from "@/components/AuthBootstrap";
 import { ConditionalBackground } from "@/components/ConditionalBackground";
 import { NavBar } from "@/components/NavBar";
 import { ScrollProgress } from "@/components/ScrollProgress";
-import { SessionBootstrap } from "@/components/SessionBootstrap";
 import { SessionChip } from "@/components/SessionChip";
 
 export const metadata: Metadata = {
@@ -26,7 +26,7 @@ export default function RootLayout({
       <body className="min-h-screen flex flex-col">
         <ConditionalBackground />
         <ScrollProgress />
-        <SessionBootstrap />
+        <AuthBootstrap />
         <NavBar />
         <main className="flex-1 w-full">{children}</main>
         <Footer />
