@@ -452,23 +452,36 @@ function Stat({
 }
 
 function SocialProof() {
-  const integrations = [
-    "Datadog",
-    "Grafana",
-    "New Relic",
-    "PagerDuty",
-    "Opsgenie",
-    "Slack",
+  // simpleicons.org CDN serves single-color SVG brand marks. We use a
+  // grey hex (Tailwind's slate-400 ~ 9ca3af) so the row stays muted on
+  // the landing page; opacity bumps on hover. CC0 licensed, no API key.
+  const integrations: { slug: string; name: string }[] = [
+    { slug: "datadog", name: "Datadog" },
+    { slug: "grafana", name: "Grafana" },
+    { slug: "newrelic", name: "New Relic" },
+    { slug: "pagerduty", name: "PagerDuty" },
+    { slug: "atlassian", name: "Opsgenie" },
+    { slug: "slack", name: "Slack" },
+    { slug: "github", name: "GitHub" },
   ];
   return (
     <section className="border-y border-white/[0.05] bg-ink-950/50">
-      <div className="mx-auto max-w-7xl px-6 py-8 flex flex-wrap items-center justify-center gap-x-10 gap-y-3 text-ink-500">
+      <div className="mx-auto max-w-7xl px-6 py-8 flex flex-wrap items-center justify-center gap-x-10 sm:gap-x-12 gap-y-5 text-ink-500">
         <span className="text-[11px] uppercase tracking-[0.2em]">
           Integrates with
         </span>
-        {integrations.map((n) => (
-          <span key={n} className="text-sm font-medium text-ink-300">
-            {n}
+        {integrations.map((i) => (
+          <span
+            key={i.slug}
+            title={i.name}
+            className="inline-flex items-center"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`https://cdn.simpleicons.org/${i.slug}/9ca3af`}
+              alt={i.name}
+              className="h-5 sm:h-6 opacity-70 hover:opacity-100 transition"
+            />
           </span>
         ))}
       </div>

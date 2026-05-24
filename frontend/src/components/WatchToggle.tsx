@@ -134,10 +134,10 @@ export function WatchToggle({
               </>
             ) : (
               <>
-                Turn this on and IncidentIQ auto-creates incidents whenever
-                your connected monitoring stack sees a fresh error cluster.
-                No manual analyze clicks — point it at any service in your
-                Datadog / Grafana / New Relic account.
+                Polls your connected Datadog account every 60s. When a
+                fresh error cluster appears, IncidentIQ auto-creates an
+                incident — no manual analyze clicks. Connect Datadog
+                under Settings to point it at your own account.
               </>
             )}
           </div>

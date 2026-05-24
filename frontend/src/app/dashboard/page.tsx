@@ -9,7 +9,6 @@ import type {
   SampleIncident,
 } from "@/lib/types";
 import { AnalyzePanel } from "@/components/AnalyzePanel";
-import { ComingSoonIntegrations } from "@/components/ComingSoonIntegrations";
 import { WatchToggle } from "@/components/WatchToggle";
 
 export const dynamic = "force-dynamic";
@@ -123,7 +122,6 @@ export default async function DashboardPage() {
         <AnalyzePanel samples={samples} integrations={integrations} />
       </Suspense>
 
-      <ComingSoonIntegrations />
     </section>
   );
 }
