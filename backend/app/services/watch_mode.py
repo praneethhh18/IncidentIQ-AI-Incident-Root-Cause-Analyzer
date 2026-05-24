@@ -272,7 +272,11 @@ class WatchService:
             result.title = "[watch] Auto-detected incident"
         else:
             result.title = f"[watch] {result.title}"
-        self._store.save(result)
+        # Pin auto-incidents to whoever started Watch Mode so they only
+        # show up in that operator's history. Without this, every Watch
+        # incident landed in the shared pool (user_id NULL) - we used
+        # to leak those to all other signed-in users.
+        self._store.save(result, user_id=self._session_id)
         s.recent_fingerprints[fingerprint] = now
         s.incidents_created += 1
         s.last_incident_id = result.incident_id

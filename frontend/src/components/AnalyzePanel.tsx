@@ -41,11 +41,39 @@ const TABS: { id: Tab; label: string; source: SourceKind }[] = [
 
 export function AnalyzePanel({
   samples,
-  integrations,
+  integrations: integrationsFromServer,
 }: {
   samples: SampleIncident[];
   integrations: IntegrationStatus[];
 }) {
+  // The server-rendered integrations list comes from a fetch that
+  // happened on Vercel, where localStorage doesn't exist - so it has
+  // no X-IIQ-User header and the backend reports every connector as
+  // "not configured" regardless of what this user actually saved.
+  // We seed state from that (so the SSR markup matches) and then
+  // immediately refetch on mount with the proper auth header, which
+  // gives us the real per-user status. That's why a user could paste
+  // Datadog keys in Settings (client-side fetch -> "Connected") and
+  // see the Dashboard card still showing "Connect" (server-side
+  // fetch with no auth) until they manually refreshed.
+  const [integrations, setIntegrations] = useState<IntegrationStatus[]>(
+    integrationsFromServer,
+  );
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const fresh = await api.integrations();
+        if (!cancelled) setIntegrations(fresh);
+      } catch {
+        /* keep server-rendered fallback */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const [tab, setTab] = useState<Tab>("paste");
   const [logs, setLogs] = useState("");
   const [serviceHint, setServiceHint] = useState("");

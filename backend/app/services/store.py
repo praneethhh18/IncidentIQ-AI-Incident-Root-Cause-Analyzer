@@ -141,21 +141,25 @@ class AnalysisStore:
     ) -> Optional[AnalyzeResponse]:
         """Fetch a single incident.
 
-        If ``user_id`` is supplied, only returns the row when it belongs
-        to that user OR to the shared pool (user_id IS NULL). Without
-        user_id, returns the row regardless of owner (used internally
-        for cross-user operations like webhook follow-ups).
+        Strict per-user scoping: when ``user_id`` is supplied, only
+        returns the row when it belongs to that user. We deliberately
+        do NOT include the shared pool (user_id IS NULL) here -
+        legacy migrated rows and stray background-task writes both
+        land in that pool and would otherwise leak between accounts.
+        When ``user_id`` is None (anonymous server-to-server call,
+        e.g. webhook follow-up), only the shared pool is returned.
         """
         with self._lock:
             if user_id is not None:
                 row = self._conn.execute(
                     "SELECT payload FROM incidents "
-                    "WHERE incident_id = ? AND (user_id = ? OR user_id IS NULL)",
+                    "WHERE incident_id = ? AND user_id = ?",
                     (incident_id, user_id),
                 ).fetchone()
             else:
                 row = self._conn.execute(
-                    "SELECT payload FROM incidents WHERE incident_id = ?",
+                    "SELECT payload FROM incidents "
+                    "WHERE incident_id = ? AND user_id IS NULL",
                     (incident_id,),
                 ).fetchone()
         if row is None:
@@ -170,10 +174,13 @@ class AnalysisStore:
     ) -> List[IncidentSummary]:
         """Recent incidents visible to the given user.
 
-        Always includes the shared/public bucket (user_id IS NULL).
-        When ``user_id`` is None, returns only the shared pool - this
-        is the safe default for unauthenticated requests so no signed-in
-        user's private incidents leak.
+        Strict per-user scoping: signed-in users see ONLY rows they
+        own. The shared pool (user_id IS NULL) is deliberately not
+        included anymore - it was the source of a leak where legacy
+        migrated rows + background-task writes were visible to every
+        account. Anonymous callers (user_id=None) see only the shared
+        pool, which is right for webhook callbacks and the unsigned-in
+        landing page.
         """
         capped_limit = max(1, min(limit, self._capacity))
         with self._lock:
@@ -187,7 +194,7 @@ class AnalysisStore:
             else:
                 rows = self._conn.execute(
                     "SELECT payload FROM incidents "
-                    "WHERE user_id = ? OR user_id IS NULL "
+                    "WHERE user_id = ? "
                     "ORDER BY created_at DESC LIMIT ?",
                     (user_id, capped_limit),
                 ).fetchall()
