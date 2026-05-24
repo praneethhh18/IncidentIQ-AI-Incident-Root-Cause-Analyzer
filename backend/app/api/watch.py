@@ -54,8 +54,15 @@ def _to_payload(status: WatchStatus) -> dict:
     }
 
 
+# IMPORTANT: start / stop are async endpoints because they call
+# asyncio.create_task() / Task.cancel() which require a running event
+# loop. FastAPI runs sync endpoints in a threadpool (no loop in that
+# thread), so a sync endpoint would crash with "no running event loop"
+# 500-ing the request and stripping CORS headers from the error
+# response - which surfaces in the browser as a confusing "Failed to
+# fetch / blocked by CORS" message.
 @router.post("/watch/start")
-def watch_start(
+async def watch_start(
     body: WatchStartRequest,
     analyzer: Analyzer = Depends(get_analyzer),
     store: AnalysisStore = Depends(get_analysis_store),
@@ -71,7 +78,7 @@ def watch_start(
 
 
 @router.post("/watch/stop")
-def watch_stop(
+async def watch_stop(
     analyzer: Analyzer = Depends(get_analyzer),
     store: AnalysisStore = Depends(get_analysis_store),
 ) -> dict:
@@ -84,5 +91,6 @@ def watch_status(
     analyzer: Analyzer = Depends(get_analyzer),
     store: AnalysisStore = Depends(get_analysis_store),
 ) -> dict:
+    # GET status doesn't touch the task; staying sync keeps it cheap.
     service = get_watch_service(get_settings(), analyzer, store)
     return _to_payload(service.status)

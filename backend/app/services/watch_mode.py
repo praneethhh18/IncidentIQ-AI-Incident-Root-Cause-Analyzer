@@ -111,16 +111,40 @@ class WatchService:
             logger.info("Watch mode already running; returning current status")
             return self._status
 
-        self._status = WatchStatus(
-            running=True,
+        # Build the next status object but DON'T mutate self._status
+        # until create_task succeeds. Previously we set running=True
+        # before create_task, so a "no running event loop" crash left
+        # the flag stuck while no polling actually happened - the UI
+        # said 'Watching' but nothing ever updated.
+        next_status = WatchStatus(
+            running=False,
             started_at=datetime.now(timezone.utc),
             poll_interval_s=poll_interval_s,
             window_minutes=window_minutes,
             error_threshold=error_threshold,
             service_filter=service_filter,
         )
-        self._task = asyncio.create_task(self._run_loop(), name="watch-mode-loop")
+        try:
+            self._task = asyncio.create_task(
+                self._run_loop_with_status(next_status),
+                name="watch-mode-loop",
+            )
+        except RuntimeError as exc:
+            logger.error("Could not create watch loop: %s", exc)
+            next_status.last_error = f"could not start: {exc}"
+            self._status = next_status
+            raise
+
+        # Task scheduled successfully - now it's safe to flip the flag.
+        next_status.running = True
+        self._status = next_status
         return self._status
+
+    async def _run_loop_with_status(self, status: WatchStatus) -> None:
+        """Thin wrapper that pins self._status to this task's status object
+        in case multiple start/stop cycles race."""
+        self._status = status
+        await self._run_loop()
 
     def stop(self) -> WatchStatus:
         if self._task is not None and not self._task.done():
