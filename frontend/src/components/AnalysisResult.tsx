@@ -18,6 +18,7 @@ import type { AnalyzeResponse } from "@/lib/types";
 import { formatDateTime } from "@/lib/utils";
 
 import { AgentTrail } from "./AgentTrail";
+import { CodeFixPanel } from "./CodeFixPanel";
 import { DeepTraceBanner } from "./DeepTraceBanner";
 import { DeepTracePanel } from "./DeepTracePanel";
 import { EvidenceList } from "./EvidenceList";
@@ -210,6 +211,10 @@ export function AnalysisResult({
           </h3>
           <EvidenceList lines={analysis.evidence} />
         </div>
+      </FadeItem>
+
+      <FadeItem variant="cardRise">
+        <CodeFixPanel analysis={analysis} onUpdated={setAnalysis} />
       </FadeItem>
 
       <FadeItem variant="cardRise">

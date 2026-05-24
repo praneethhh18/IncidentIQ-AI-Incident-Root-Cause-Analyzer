@@ -88,6 +88,12 @@ export const api = {
       json: { logs, reason },
     }),
 
+  codeFix: (incidentId: string, repoUrl: string) =>
+    request<AnalyzeResponse>(`/api/v1/incidents/${incidentId}/code-fix`, {
+      method: "POST",
+      json: { repo_url: repoUrl },
+    }),
+
   chat: (incidentId: string, message: string) =>
     request<{ reply: ChatMessage; history: ChatMessage[] }>(
       `/api/v1/incidents/${incidentId}/chat`,

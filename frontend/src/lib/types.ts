@@ -114,6 +114,27 @@ export interface FiveWhys {
   counter_factual: string;
 }
 
+export interface CodeFixSubStep {
+  name: string;
+  summary: string;
+  detail: string;
+  duration_ms: number;
+}
+
+export interface CodeFix {
+  repo_url: string;
+  file_path: string;
+  snippet: string;
+  diff: string;
+  rationale: string;
+  confidence: number;
+  verify_passed: boolean;
+  verify_output: string;
+  candidate_files: string[];
+  sub_steps: CodeFixSubStep[];
+  duration_ms: number;
+}
+
 export interface AnalyzeResponse {
   incident_id: string;
   created_at: string;
@@ -142,6 +163,7 @@ export interface AnalyzeResponse {
   recheck_count: number;
   resolution_summary: string;
   chat_history: ChatMessage[];
+  code_fix?: CodeFix | null;
 }
 
 export interface IncidentSummary {
