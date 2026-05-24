@@ -12,6 +12,7 @@ from app.api import (
     incidents,
     integrations,
     samples,
+    watch,
     webhooks,
 )
 
@@ -25,4 +26,5 @@ router.include_router(github_auth.router, prefix="/api/v1", tags=["github-auth"]
 router.include_router(incidents.router, prefix="/api/v1", tags=["incidents"])
 router.include_router(integrations.router, prefix="/api/v1", tags=["integrations"])
 router.include_router(samples.router, prefix="/api/v1", tags=["samples"])
+router.include_router(watch.router, prefix="/api/v1", tags=["watch"])
 router.include_router(webhooks.router, prefix="/api/v1", tags=["webhooks"])

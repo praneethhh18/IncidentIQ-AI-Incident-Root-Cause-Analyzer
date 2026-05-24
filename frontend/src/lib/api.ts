@@ -14,6 +14,7 @@ import type {
   IncidentSummary,
   IntegrationStatus,
   SampleIncident,
+  WatchStatusPayload,
 } from "./types";
 
 export const API_BASE =
@@ -61,6 +62,27 @@ export const api = {
   health: () => request<{ status: string; bedrock_enabled: boolean; model: string }>("/health"),
 
   integrations: () => request<IntegrationStatus[]>("/api/v1/integrations"),
+
+  datadogServices: (windowMinutes = 60) =>
+    request<{ connected: boolean; services: string[] }>(
+      `/api/v1/integrations/datadog/services?window_minutes=${windowMinutes}`,
+    ),
+
+  watchStatus: () => request<WatchStatusPayload>("/api/v1/watch/status"),
+
+  watchStart: (body: {
+    service?: string;
+    poll_interval_s?: number;
+    window_minutes?: number;
+    error_threshold?: number;
+  }) =>
+    request<WatchStatusPayload>("/api/v1/watch/start", {
+      method: "POST",
+      json: body,
+    }),
+
+  watchStop: () =>
+    request<WatchStatusPayload>("/api/v1/watch/stop", { method: "POST" }),
 
   samples: () => request<SampleIncident[]>("/api/v1/samples"),
 

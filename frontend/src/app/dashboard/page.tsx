@@ -10,6 +10,7 @@ import type {
 } from "@/lib/types";
 import { AnalyzePanel } from "@/components/AnalyzePanel";
 import { ComingSoonIntegrations } from "@/components/ComingSoonIntegrations";
+import { WatchToggle } from "@/components/WatchToggle";
 
 export const dynamic = "force-dynamic";
 
@@ -66,6 +67,7 @@ export default async function DashboardPage() {
             tone={connectedCount > 0 ? "live" : "neutral"}
             label={`Integrations: ${connectedCount}/${totalIntegrations}`}
           />
+          <WatchToggle />
           {recent.length > 0 ? (
             <Link
               href="/incidents"

@@ -3,11 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
+  ChevronDown,
+  ChevronRight,
   FileUp,
   Loader2,
   Play,
+  Radar,
   Sparkles,
   Upload,
+  Zap,
 } from "lucide-react";
 
 import { api } from "@/lib/api";
@@ -53,9 +57,44 @@ export function AnalyzePanel({
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
   const [liveSteps, setLiveSteps] = useState<AgentStep[]>([]);
   const [livePhase, setLivePhase] = useState<string | null>(null);
+
+  // Datadog auto-mode state. Defaults to Auto so new users get a
+  // one-click experience instead of having to learn Datadog query syntax.
+  const [datadogAdvanced, setDatadogAdvanced] = useState(false);
+  const [datadogService, setDatadogService] = useState<string>("");
+  const [datadogServices, setDatadogServices] = useState<string[]>([]);
+  const [datadogServicesLoaded, setDatadogServicesLoaded] = useState(false);
+
   const resultRef = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Lazy-load the service list the first time the user opens the
+  // Datadog tab. Best-effort: an empty list just falls back to
+  // showing the manual query field.
+  useEffect(() => {
+    if (tab !== "datadog" || datadogServicesLoaded) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.datadogServices(60);
+        if (cancelled) return;
+        setDatadogServices(res.services ?? []);
+        setDatadogServicesLoaded(true);
+        if (!datadogService && res.services?.length) {
+          const preferred = res.services.find((s) =>
+            s.toLowerCase().includes("fashion-aura"),
+          );
+          setDatadogService(preferred ?? res.services[0]);
+        }
+      } catch {
+        setDatadogServicesLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, datadogServicesLoaded, datadogService]);
 
   useEffect(() => {
     if (result && resultRef.current) {
@@ -94,6 +133,17 @@ export function AnalyzePanel({
     try {
       const source =
         TABS.find((t) => t.id === tab)?.source ?? ("paste" as SourceKind);
+
+      // For Datadog in Auto mode, synthesise the query from the picked
+      // service so the user never has to learn DD query syntax. Advanced
+      // mode passes the user-typed query straight through.
+      let effectiveQuery = query;
+      if (source === "datadog" && !datadogAdvanced) {
+        effectiveQuery = datadogService
+          ? `service:${datadogService} status:error`
+          : "status:error";
+      }
+
       const body = {
         source,
         title: filename || undefined,
@@ -102,7 +152,7 @@ export function AnalyzePanel({
           source === "datadog" || source === "grafana" || source === "newrelic"
             ? undefined
             : logs,
-        integration_query: query || undefined,
+        integration_query: effectiveQuery || undefined,
         time_window_minutes: windowMinutes,
       };
 
@@ -255,6 +305,19 @@ export function AnalyzePanel({
                 </div>
               ) : null}
             </>
+          ) : tab === "datadog" ? (
+            <DatadogTabBody
+              advanced={datadogAdvanced}
+              onToggleAdvanced={() => setDatadogAdvanced((v) => !v)}
+              query={query}
+              onQueryChange={setQuery}
+              windowMinutes={windowMinutes}
+              onWindowMinutesChange={setWindowMinutes}
+              service={datadogService}
+              onServiceChange={setDatadogService}
+              services={datadogServices}
+              servicesLoaded={datadogServicesLoaded}
+            />
           ) : (
             <>
               <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3 text-[12.5px] text-ink-300 leading-relaxed">
@@ -270,9 +333,7 @@ export function AnalyzePanel({
                   <input
                     className="input"
                     placeholder={
-                      tab === "datadog"
-                        ? "service:checkout-api status:error"
-                        : tab === "grafana"
+                      tab === "grafana"
                         ? '{job="checkout-api"} |~ "(?i)(error|fail)"'
                         : "SELECT * FROM Log WHERE level='error' SINCE 30 minutes ago"
                     }
@@ -392,6 +453,134 @@ function LiveAgentPanel({
           Waiting for the agent to take its first step…
         </div>
       )}
+    </div>
+  );
+}
+
+
+function DatadogTabBody({
+  advanced,
+  onToggleAdvanced,
+  query,
+  onQueryChange,
+  windowMinutes,
+  onWindowMinutesChange,
+  service,
+  onServiceChange,
+  services,
+  servicesLoaded,
+}: {
+  advanced: boolean;
+  onToggleAdvanced: () => void;
+  query: string;
+  onQueryChange: (q: string) => void;
+  windowMinutes: number;
+  onWindowMinutesChange: (n: number) => void;
+  service: string;
+  onServiceChange: (s: string) => void;
+  services: string[];
+  servicesLoaded: boolean;
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.04] p-3 text-[12.5px] text-ink-300 leading-relaxed flex items-start gap-2">
+        <Zap className="size-3.5 mt-0.5 text-emerald-300 shrink-0" />
+        <div>
+          IncidentIQ pulls errors directly from your connected Datadog
+          account. Pick a service (or leave it on All) and click Analyze —
+          no query syntax needed.
+        </div>
+      </div>
+
+      {!advanced ? (
+        <div className="grid sm:grid-cols-[1fr,160px] gap-3">
+          <div>
+            <label className="block text-[11.5px] uppercase tracking-wider text-ink-500 mb-1.5">
+              Service
+            </label>
+            <select
+              className="input"
+              value={service}
+              onChange={(e) => onServiceChange(e.target.value)}
+              disabled={!servicesLoaded}
+            >
+              <option value="">
+                {servicesLoaded
+                  ? services.length === 0
+                    ? "(no recent services - All)"
+                    : "All services"
+                  : "Loading services…"}
+              </option>
+              {services.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[11.5px] uppercase tracking-wider text-ink-500 mb-1.5">
+              Window (min)
+            </label>
+            <input
+              type="number"
+              min={1}
+              max={1440}
+              className="input"
+              value={windowMinutes}
+              onChange={(e) =>
+                onWindowMinutesChange(Number(e.target.value) || 30)
+              }
+            />
+          </div>
+        </div>
+      ) : (
+        <div className="grid sm:grid-cols-[1fr,160px] gap-3">
+          <div>
+            <label className="block text-[11.5px] uppercase tracking-wider text-ink-500 mb-1.5">
+              Custom Datadog query
+            </label>
+            <input
+              className="input"
+              placeholder="service:checkout-api status:error"
+              value={query}
+              onChange={(e) => onQueryChange(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="block text-[11.5px] uppercase tracking-wider text-ink-500 mb-1.5">
+              Window (min)
+            </label>
+            <input
+              type="number"
+              min={1}
+              max={1440}
+              className="input"
+              value={windowMinutes}
+              onChange={(e) =>
+                onWindowMinutesChange(Number(e.target.value) || 30)
+              }
+            />
+          </div>
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={onToggleAdvanced}
+        className="inline-flex items-center gap-1 text-[11.5px] text-ink-400 hover:text-ink-200 transition"
+      >
+        {advanced ? (
+          <>
+            <ChevronDown className="size-3" /> Hide custom query
+          </>
+        ) : (
+          <>
+            <ChevronRight className="size-3" /> Advanced: write a custom Datadog
+            query
+          </>
+        )}
+      </button>
     </div>
   );
 }

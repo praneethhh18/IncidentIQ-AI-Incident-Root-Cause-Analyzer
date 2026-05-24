@@ -114,6 +114,21 @@ export interface FiveWhys {
   counter_factual: string;
 }
 
+export interface WatchStatusPayload {
+  running: boolean;
+  started_at: string | null;
+  last_polled_at: string | null;
+  last_poll_log_lines: number;
+  last_poll_summary: string;
+  incidents_created: number;
+  last_incident_id: string | null;
+  last_error: string | null;
+  poll_interval_s: number;
+  window_minutes: number;
+  error_threshold: number;
+  service_filter: string | null;
+}
+
 export interface GitHubStatus {
   enabled: boolean;
   connected: boolean;

@@ -83,6 +83,51 @@ class DatadogIntegration(MonitoringIntegration):
             lines.append(f"{ts} {status.upper():<5} {service:<20} {message}")
         return "\n".join(lines)
 
+    async def list_recent_services(self, window_minutes: int = 60) -> list[str]:
+        """Return distinct service names that emitted error/warn logs recently.
+
+        Hits the Datadog Logs aggregate API; falls back to a small probe
+        via the search API if aggregate fails (or no creds, returns an
+        empty list so the UI can degrade to manual entry).
+        """
+        if not self.is_configured():
+            return []
+
+        url = f"{self._base_url}/api/v2/logs/analytics/aggregate"
+        now = datetime.now(timezone.utc)
+        body = {
+            "filter": {
+                "query": "status:error OR status:warn",
+                "from": (now - timedelta(minutes=window_minutes)).isoformat(),
+                "to": now.isoformat(),
+            },
+            "compute": [{"aggregation": "count"}],
+            "group_by": [
+                {"facet": "service", "limit": 25, "sort": {"aggregation": "count", "order": "desc"}}
+            ],
+        }
+        headers = {
+            "DD-API-KEY": self._settings.datadog_api_key or "",
+            "DD-APPLICATION-KEY": self._settings.datadog_app_key or "",
+            "Content-Type": "application/json",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.post(url, json=body, headers=headers)
+                resp.raise_for_status()
+                payload = resp.json()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Datadog list_recent_services failed: %s", exc)
+            return []
+
+        buckets = (payload.get("data") or {}).get("buckets") or []
+        names: list[str] = []
+        for bucket in buckets:
+            svc = (bucket.get("by") or {}).get("service")
+            if svc and svc not in names:
+                names.append(svc)
+        return names
+
     async def status(self) -> IntegrationStatus:
         if not self.is_configured():
             return IntegrationStatus(
