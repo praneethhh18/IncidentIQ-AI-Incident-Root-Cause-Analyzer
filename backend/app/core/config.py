@@ -53,6 +53,16 @@ class Settings(BaseSettings):
     github_oauth_callback_url: str = "http://localhost:8000/api/v1/auth/github/callback"
     github_oauth_post_login_redirect: str = "http://localhost:3000/dashboard"
 
+    # Firebase Admin — verifies Google sign-in ID tokens minted by the
+    # frontend Firebase Web SDK. The three fields together form a valid
+    # service-account credential; missing any one disables the endpoint
+    # and the frontend Google button stays grayed out.
+    # FIREBASE_PRIVATE_KEY in .env should keep its literal "\n" escapes —
+    # we unescape on use so a single-line env value survives the round trip.
+    firebase_project_id: str | None = None
+    firebase_client_email: str | None = None
+    firebase_private_key: str | None = None
+
     # Persistent store. systemd's StateDirectory=incidentiq creates
     # /var/lib/incidentiq on the EC2 host and chowns it to the service
     # user, so this default works in production without any extra
@@ -125,6 +135,14 @@ class Settings(BaseSettings):
     @property
     def github_oauth_enabled(self) -> bool:
         return bool(self.github_oauth_client_id and self.github_oauth_client_secret)
+
+    @property
+    def firebase_enabled(self) -> bool:
+        return bool(
+            self.firebase_project_id
+            and self.firebase_client_email
+            and self.firebase_private_key
+        )
 
 
 @lru_cache(maxsize=1)
