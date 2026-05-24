@@ -28,9 +28,17 @@ app = FastAPI(
     version=__version__,
 )
 
+# CORS whitelists:
+#   - Exact origins (CORS_ORIGINS env): the production domains we own.
+#   - Regex (CORS_ORIGIN_REGEX env): pattern for Vercel preview URLs
+#     (incident-<hash>-<team>.vercel.app), which change per build and
+#     can't be enumerated. Default lets *.vercel.app under the
+#     praneethhh0218-7818s-projects team through; override per
+#     environment via CORS_ORIGIN_REGEX in .env.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
+    allow_origin_regex=settings.cors_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

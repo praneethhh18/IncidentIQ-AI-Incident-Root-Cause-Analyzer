@@ -68,6 +68,15 @@ class Settings(BaseSettings):
         default="http://localhost:3000,http://127.0.0.1:3000",
         validation_alias=AliasChoices("CORS_ORIGINS", "cors_origins_raw"),
     )
+    # Regex for origins that change per build (Vercel previews look like
+    # https://incident-<hash>-<team>.vercel.app). Set to empty string in
+    # the .env to disable; default allows any HTTPS Vercel preview which
+    # is fine for a hackathon demo. Lock down to a specific team prefix
+    # in real production.
+    cors_origin_regex: str = Field(
+        default=r"https://[a-z0-9-]+\.vercel\.app",
+        validation_alias=AliasChoices("CORS_ORIGIN_REGEX", "cors_origin_regex"),
+    )
     log_level: str = "INFO"
 
     model_config = SettingsConfigDict(
