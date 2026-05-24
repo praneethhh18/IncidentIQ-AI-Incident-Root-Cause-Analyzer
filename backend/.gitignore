@@ -1,3 +1,8 @@
 
 # Cached repo clones for the code-fix pipeline
 cache/
+
+store.db
+store.db-journal
+store.db-wal
+store.db-shm

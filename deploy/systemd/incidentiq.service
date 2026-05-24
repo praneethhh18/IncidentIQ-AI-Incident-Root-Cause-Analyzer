@@ -10,6 +10,12 @@ User=ubuntu
 Group=ubuntu
 WorkingDirectory=/opt/incidentiq/backend
 
+# Persistent state directory. systemd creates /var/lib/incidentiq with
+# the right ownership before ExecStart runs - this is where the SQLite
+# store lives, so incidents survive restarts and deploys.
+StateDirectory=incidentiq
+StateDirectoryMode=0750
+
 # All secrets (AWS keys, Datadog keys, GitHub OAuth secret, etc.) live
 # in this file. The deploy bootstrap copies an example version; the
 # operator fills in real values before the first systemctl start.

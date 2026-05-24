@@ -36,9 +36,9 @@ export default async function DashboardPage() {
   const totalIntegrations = integrations.length;
 
   return (
-    <section className="mx-auto max-w-7xl px-6 py-10">
-      <header className="mb-7 flex items-start justify-between gap-6 flex-wrap">
-        <div>
+    <section className="mx-auto max-w-7xl px-4 sm:px-6 py-6 sm:py-10">
+      <header className="mb-6 sm:mb-7 flex items-start justify-between gap-4 sm:gap-6 flex-wrap">
+        <div className="min-w-0">
           <nav className="flex items-center gap-1.5 text-[11.5px] text-ink-400 font-medium">
             <Link href="/" className="hover:text-ink-50 transition">
               IncidentIQ
@@ -46,10 +46,10 @@ export default async function DashboardPage() {
             <span className="text-ink-700">/</span>
             <span className="text-ink-200">Dashboard</span>
           </nav>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-ink-50">
+          <h1 className="mt-3 text-2xl sm:text-3xl font-semibold tracking-tight text-ink-50">
             Analyze an incident
           </h1>
-          <p className="mt-2 text-ink-300 max-w-2xl">
+          <p className="mt-2 text-[13.5px] sm:text-base text-ink-300 max-w-2xl">
             Paste logs, upload a file, or pull straight from a connected
             monitoring tool. The agent returns a structured analysis in seconds.
           </p>
@@ -58,14 +58,37 @@ export default async function DashboardPage() {
         {/* Status rail. Reads as the small system-health bar a real
             operations tool would have in its header. */}
         <div className="flex items-center gap-2 flex-wrap">
+          {/* AI status. We never say "Demo mode" - it scares users away
+              from a perfectly working installation that just happens to
+              be missing AWS credentials. Three honest states:
+                live      - Bedrock authenticated + reachable
+                offline   - health endpoint replied but bedrock disabled
+                unreachable - health endpoint itself failed (status==='unknown')
+          */}
           <StatusPill
-            tone={health.bedrock_enabled ? "live" : "demo"}
-            label={health.bedrock_enabled ? "AI online" : "Demo mode"}
+            tone={
+              health.bedrock_enabled
+                ? "live"
+                : health.status === "unknown"
+                  ? "warn"
+                  : "neutral"
+            }
+            label={
+              health.bedrock_enabled
+                ? "AI online"
+                : health.status === "unknown"
+                  ? "Backend unreachable"
+                  : "AI offline"
+            }
             icon={<Cpu className="size-3" />}
           />
           <StatusPill
             tone={connectedCount > 0 ? "live" : "neutral"}
-            label={`Integrations: ${connectedCount}/${totalIntegrations}`}
+            label={
+              totalIntegrations > 0
+                ? `Integrations: ${connectedCount}/${totalIntegrations}`
+                : "Integrations: -"
+            }
           />
           <WatchToggle />
           {recent.length > 0 ? (
@@ -95,23 +118,23 @@ function StatusPill({
   label,
   icon,
 }: {
-  tone: "live" | "demo" | "neutral";
+  tone: "live" | "warn" | "neutral";
   label: string;
   icon?: React.ReactNode;
 }) {
   const styles =
     tone === "live"
       ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/25"
-      : tone === "demo"
-      ? "bg-amber-500/10 text-amber-300 border-amber-500/25"
-      : "bg-white/[0.04] text-ink-200 border-white/[0.07]";
+      : tone === "warn"
+        ? "bg-amber-500/10 text-amber-300 border-amber-500/25"
+        : "bg-white/[0.04] text-ink-200 border-white/[0.07]";
 
   const dot =
     tone === "live"
       ? "bg-emerald-400"
-      : tone === "demo"
-      ? "bg-amber-400"
-      : "bg-ink-400";
+      : tone === "warn"
+        ? "bg-amber-400"
+        : "bg-ink-400";
 
   return (
     <span

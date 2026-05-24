@@ -53,6 +53,13 @@ class Settings(BaseSettings):
     github_oauth_callback_url: str = "http://localhost:8000/api/v1/auth/github/callback"
     github_oauth_post_login_redirect: str = "http://localhost:3000/dashboard"
 
+    # Persistent store. systemd's StateDirectory=incidentiq creates
+    # /var/lib/incidentiq on the EC2 host and chowns it to the service
+    # user, so this default works in production without any extra
+    # setup. Local dev overrides via .env (STORE_DB_PATH=./store.db).
+    # Use ":memory:" in tests to skip disk entirely.
+    store_db_path: str = "/var/lib/incidentiq/store.db"
+
     # Server — store as raw string and expose parsed list via property so
     # pydantic-settings doesn't try to JSON-decode comma-separated input
     # from .env files.

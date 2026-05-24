@@ -85,7 +85,7 @@ export function AnalysisResult({
               analyzed in {(analysis.duration_ms / 1000).toFixed(1)}s
             </span>
           ) : null}
-          <div className="ml-auto flex items-center gap-2">
+          <div className="sm:ml-auto flex items-center gap-2 flex-wrap">
             {!analysis.deep_trace ? (
               <button
                 onClick={() => runDeepTrace("Manually invoked from analysis header.")}
@@ -127,10 +127,12 @@ export function AnalysisResult({
           </div>
         </div>
 
-        <h2 className="mt-4 text-2xl font-semibold tracking-tight text-ink-50">
+        <h2 className="mt-4 text-xl sm:text-2xl font-semibold tracking-tight text-ink-50 break-words">
           {analysis.title}
         </h2>
-        <p className="mt-3 text-ink-300 leading-relaxed">{analysis.summary}</p>
+        <p className="mt-3 text-[13.5px] sm:text-base text-ink-300 leading-relaxed break-words">
+          {analysis.summary}
+        </p>
       </header>
       </FadeItem>
 
